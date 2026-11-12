@@ -5,6 +5,7 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url)), repo = path.resolve(here, '..');
@@ -26,7 +27,11 @@ await build({
 });
 const nm = (p) => path.join(FERRET, 'node_modules', p);
 fs.copyFileSync(nm('babylonjs/babylon.js'), path.join(OUT, 'lib', 'babylon.js'));
+fs.copyFileSync(path.join(FERRET, 'node_modules', '.pnpm', '@babylonjs+core@9.33.1', 'node_modules', '@babylonjs', 'core', 'assets', 'meshopt', 'meshopt_decoder.js'), path.join(OUT, 'lib', 'meshopt_decoder.js'));
 fs.copyFileSync(nm('babylonjs-loaders/babylonjs.loaders.min.js'), path.join(OUT, 'lib', 'babylonjs.loaders.min.js'));
 const tpl = fs.readFileSync(path.join(repo, 'src', 'play.template.html'), 'utf8');
 fs.writeFileSync(path.join(OUT, 'index.html'), tpl.replace('<!--SCRIPTS-->', '<script src="lib/babylon.js"></script>\n<script src="lib/babylonjs.loaders.min.js"></script>\n<script>globalThis.FERRET_LIB = "/lib/ferret/";</script>\n<script src="main.js"></script>'));
+// compressed copies of the glb files (meshopt geometry, WebP textures) next to the page; the server puts them before the repository's art
+const oz = spawnSync('node', [path.join(here, 'optimize_glb.mjs'), path.join(OUT, 'glb')], { stdio: 'inherit' });
+if (oz.status !== 0) throw new Error('optimize_glb failed');
 console.log('built', stamp, 'into', OUT);

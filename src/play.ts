@@ -1,5 +1,6 @@
 // Copyright (C) Konstantin Khait, Squirrel Wisdom Academy, 2026
 import { buildSet } from './scene/set';
+import { planCarLoading } from './loading';
 import { InputService } from '@ferret/input';
 import { glbJson, nodeInfos } from './game/glbinfo';
 import { parseLayout, type Layout } from './game/layout';
@@ -24,12 +25,24 @@ const splash = {
 };
 const win = window as unknown as Record<string, unknown>;
 
-async function bytes(url: string): Promise<ArrayBuffer> { const r = await fetch(url); if (!r.ok) throw new Error(url + ' ' + r.status); return r.arrayBuffer(); }
+/** the start of a glb up to the end of its JSON chunk (the layout and the node infos need only that; the transfer of the rest is cancelled) */
+async function bytes(url: string): Promise<ArrayBuffer> {
+  const r = await fetch(url); if (!r.ok) throw new Error(url + ' ' + r.status);
+  const rd = r.body!.getReader(), parts: Uint8Array[] = []; let have = 0, need = 20;
+  for (;;) {
+    const { done, value } = await rd.read(); if (done) break;
+    parts.push(value!); have += value!.length;
+    if (have >= 20 && need === 20) { const h = new Uint8Array(20); let o = 0; for (const p of parts) { h.set(p.subarray(0, Math.min(p.length, 20 - o)), o); o += p.length; if (o >= 20) break; } need = 20 + new DataView(h.buffer).getUint32(12, true); }
+    if (have >= need) { void rd.cancel(); break; }
+  }
+  const out = new Uint8Array(have); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; }
+  return out.buffer;
+}
 
 async function main() {
   $('splashver').textContent = (globalThis as { __TAKE37_BUILD__?: string }).__TAKE37_BUILD__ ?? '';
   const stationNodes = new Map<string, BABYLON.TransformNode>();
-  const set = await buildSet($('c') as HTMLCanvasElement, q, (p, t) => splash.set(p * 0.6, t), { gas: 'none', keepProps: true });
+  const set = await buildSet($('c') as HTMLCanvasElement, q, (p, t) => splash.set(p * 0.6, t), { gas: 'none', keepProps: true, deferStart: true });
   const { scene, camera, propNodes } = set;
   camera.detachControl();
 
@@ -39,7 +52,8 @@ async function main() {
   const layout: Layout = parseLayout(street, cols, gasBuf);
   const infos: KindInfos = {};
   const kinds = Object.keys(CAR_KINDS) as KindId[];
-  for (const k of kinds) infos[k] = nodeInfos(glbJson(await bytes(CAR_KINDS[k].glb)));
+  const carPlan = planCarLoading(scene, kinds);   // the cars start loading now, while the layout and the station are read
+  await Promise.all(kinds.map(async (k) => { infos[k] = nodeInfos(glbJson(await bytes(CAR_KINDS[k].glb))); }));
 
   // ---- the full gas station on the street, turned away from the road (as the layout has it) ----
   splash.set(0.68, 'Gas station');
@@ -113,6 +127,9 @@ async function main() {
   });
 
   win.take37 = Object.assign(set, { take, view, layout, input, advance, autopilot, paused: () => paused, stationNodes, propNodes, begin, setPaused: (p: boolean) => { paused = p; } });
+  void carPlan.loadDamaged(view);   // the wrecked variants come in behind the ready page
+  set.start();   // the render loop starts only now: the loading above was not slowed by frames nobody sees
+  await set.settle(4);   // the first frames (shaders, the first chunks) are drawn under the splash
   win.take37Ready = true;
   void total;
   splash.hide();

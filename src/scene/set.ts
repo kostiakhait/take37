@@ -32,6 +32,8 @@ export interface SetHandle {
   setHour(h: number): void; setWeather(name: string): void;
   views(): Record<string, { position: [number, number, number]; target: [number, number, number]; fov?: number }>;
   goto(view: string): Promise<void>; settle(frames?: number): Promise<void>;
+  /** builds the terrain and the vegetation round the camera, then starts the render loop (a no-op the second time) */
+  start(): void;
   stats(): Record<string, number | string>;
   /** the sun's cascaded shadow generator (null in the light picture), for a game to add its own casters */
   shadow: BABYLON.CascadedShadowGenerator | null;
@@ -49,8 +51,12 @@ export interface SetOptions {
   keepProps?: boolean;
   /** called with the street's loaded result before anything is merged or moved: a game may rename, hide or take nodes here */
   onStreetLoaded?: (street: BABYLON.ISceneLoaderAsyncResult, scene: BABYLON.Scene) => void;
+  /** the render loop is not started when the set is built: the game loads more (the cars, the layout) and calls `start()` when it is done, so that the loading is not slowed by drawing frames nobody sees */
+  deferStart?: boolean;
 }
 
+/** the most time `start()` spends building the land before the first frame; what is left is built by the frames (a chunk budget each) while the splash is still up */
+const PRIME_MS = 3000;
 const base = (name: string) => name.replace(/_LOD[01]$/, '');
 const split = (url: string) => { const i = url.lastIndexOf('/'); return [url.slice(0, i + 1), url.slice(i + 1)] as const; };
 
@@ -64,7 +70,35 @@ function cachedHeight(g: Ground) {
   };
 }
 
+/**
+ * The flat roofs of the street ('tar' in the glb: a near-black factor, no texture) as a weathered built-up roof: mid-grey tar-and-gravel with a speckle, darker patched strips, pale lime streaks and
+ * a warm tint; the glb's vertex colour (0.4 to 0.7) still varies it from one roof to the next. The texture is periodic, so the glb's metre UVs tile it without a seam.
+ */
+function roofMaterial(scene: BABYLON.Scene) {
+  const S = 256, tex = new BABYLON.DynamicTexture('roof-gravel', { width: S, height: S }, scene, true), ctx = tex.getContext() as CanvasRenderingContext2D, img = ctx.createImageData(S, S);
+  const hash = (x: number, y: number, s: number) => { let h = (x * 374761393 + y * 668265263 + s * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
+  const noise = (u: number, v: number, n: number, s: number) => {   // periodic value noise with n cells across the tile
+    const x = u * n, y = v * n, i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j, sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const a = hash(i % n, j % n, s), b = hash((i + 1) % n, j % n, s), c = hash(i % n, (j + 1) % n, s), d = hash((i + 1) % n, (j + 1) % n, s);
+    return (a * (1 - sx) + b * sx) * (1 - sy) + (c * (1 - sx) + d * sx) * sy;
+  };
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const u = x / S, v = y / S, speck = hash(x, y, 1), grit = hash(x >> 1, y >> 1, 2);
+    const patch = noise(u, v, 4, 3), mid = noise(u, v, 16, 4), strip = Math.abs(((u * 4) % 1) - 0.5) < 0.012 ? 1 : 0;   // darker patched strips every quarter of the tile
+    let l = 0.46 + 0.22 * (speck - 0.5) + 0.16 * (grit - 0.5) + 0.2 * (mid - 0.5) + 0.22 * (patch - 0.5);
+    if (speck > 0.965) l += 0.2;   // pale chips of gravel
+    if (patch < 0.3) l -= 0.1;     // old wet tar
+    l -= strip * 0.14;
+    const k = (y * S + x) * 4, c = Math.max(0, Math.min(1, l)) * 255;
+    img.data[k] = c * 1.03; img.data[k + 1] = c * 0.99; img.data[k + 2] = c * 0.92; img.data[k + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0); tex.update(true); tex.wrapU = tex.wrapV = BABYLON.Texture.WRAP_ADDRESSMODE; tex.anisotropicFilteringLevel = 4;
+  for (const m of scene.materials) if (m instanceof BABYLON.PBRMaterial && m.name === 'tar') { m.albedoTexture = tex; m.albedoColor = new BABYLON.Color3(1, 1, 1); m.roughness = 0.92; m.metallic = 0; }
+}
+
 export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, progress: (p: number, text: string) => void = () => {}, options: SetOptions = {}): Promise<SetHandle> {
+  // the geometry of the glb files is meshopt-compressed (tools/optimize_glb.mjs): the decoder is served with the page
+  if (BABYLON.MeshoptCompression) BABYLON.MeshoptCompression.Configuration.decoder = { url: new URL('lib/meshopt_decoder.js', location.href).href };
   const game = createGame({ canvas, storageKey: 'take37-set', input: { actions: {}, bindings: { keyboard: {}, gamepad: {}, touch: {}, console: {} } as never } });
   const { world, scene, engine } = game;
   const lite = q.get('lite') === '1';
@@ -141,6 +175,7 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
   upright(street.meshes[0]);
   for (const m of street.meshes.slice()) if (/^COL_/.test(m.name)) m.dispose();   // collision stand-ins are not drawn
   options.onStreetLoaded?.(street, scene);
+  roofMaterial(scene);
   const nodes = new Map<string, BABYLON.TransformNode>(); for (const n of street.transformNodes) nodes.set(n.name, n);
   for (const m of street.meshes) if (m.name === 'Ground') m.dispose();                       // the land is the terrain's now: one ground, flat under the set
   for (const m of street.meshes) { m.computeWorldMatrix(true); m.isPickable = false; m.receiveShadows = true; if (m.getTotalVertices() > 0) m.alwaysSelectAsActiveMesh = false; }
@@ -244,6 +279,16 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
   const oaks = new ScatterView(scene, { ground, species: OAKS, cell: 128, radius: lite ? 700 : 1600, cellsPerUpdate: 2, generators: GENERATORS });
   const bushes = new ScatterView(scene, { ground, species: SHRUBS, cell: 48, radius: lite ? 100 : 200, cellsPerUpdate: 2, generators: GENERATORS });
   const stones = new ScatterView(scene, { ground, species: STONES, generators: STONE_GENERATORS, cell: 64, radius: lite ? 120 : 260, cellsPerUpdate: 1, tint: [1.02, 0.95, 0.84] });
+  // ---- while the page loads (the downloads and the decoding leave the main thread idle) the land round the first view is built in slices, so that `start()` finds most of it done ----
+  let started = false, warmed = false;
+  const warm = () => {
+    if (started || warmed) return;
+    const c = camera.globalPosition, p: [number, number, number] = [c.x, c.y, c.z], t0 = performance.now();
+    do { const st = terrain.update(p); oaks.update(p); bushes.update(p); stones.update(p); if (st.pending === 0) { warmed = true; break; } } while (performance.now() - t0 < 12);
+    if (!warmed) setTimeout(warm, 4);
+  };
+  setTimeout(warm, 0);
+
   const plantMat = plantMaterial(scene, wind);
   for (const v of [oaks, bushes]) (v as unknown as { mat: BABYLON.Material }).mat = plantMat;
   /** the dirt roads as segments with their boxes (a metre-wide test against the near ones only): the grass asks thousands of times a frame */
@@ -357,6 +402,7 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
       await settleOnce(24);
     },
     settle: (frames = 30) => settleOnce(frames),
+    start() { if (started) return; started = true; const cp = camera.globalPosition, p: [number, number, number] = [cp.x, cp.y, cp.z]; const t0 = performance.now(); for (let i = 0; i < 400 && performance.now() - t0 < PRIME_MS; i++) { const s = terrain.update(p); oaks.update(p); bushes.update(p); stones.update(p); if (s.pending === 0) break; } lodUpdate(); game.start(); },
     stats() {
       const s = terrain.stats();
       return { chunks: s.chunks, triangles: s.triangles, levels: JSON.stringify(s.levels), oaks: oaks.count(), surround: surround.count, bushes: bushes.count(), stones: stones.count(), grass: grass.drawn, litter: litter.airborne, sway: sway.materials, bakedTrees: scene.meshes.filter(m => m.isVerticesDataPresent(BABYLON.VertexBuffer.UV5Kind)).length, mergeFailed, merged: cells.length + castable.length, meshes: scene.meshes.length, active: scene.getActiveMeshes().length, fps: Math.round(engine.getFps()) };
@@ -365,7 +411,7 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
   progress(0.9, 'Terrain');
   { const v0 = views().cab; aim(camera, v0.position, v0.target, v0.fov); }
   void WEATHER; void power;
-  game.start();
+  if (!options.deferStart) api.start();
   progress(1, 'Ready');
   return api;
 }

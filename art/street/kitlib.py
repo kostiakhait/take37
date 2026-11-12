@@ -50,8 +50,11 @@ MATS = {
     'shopfloor': dict(color=(168, 140, 100), rough=0.5, metal=0.0, emit=((168, 140, 100), 0.6)),
     'redband': dict(color=(120, 8, 14), rough=0.4, metal=0.0),
     'glass': dict(color=(170, 195, 205), rough=0.04, metal=0.0, alpha=0.22, mode='BLEND', ior=1.5),
+    'glass_tint': dict(color=(24, 34, 44), rough=0.05, metal=0.0, alpha=0.34, mode='BLEND', ior=1.5),        # tinted shop glass: the room behind reads dark and deep at a distance
+    'glass_shade': dict(color=(4, 5, 8), rough=0.5, metal=0.0, alpha=0.5, mode='BLEND'),                    # the shade under the lintel and awning at the top of the pane
+    'glass_refl': dict(color=(214, 230, 244), rough=0.03, metal=0.0, alpha=0.2, mode='BLEND', ior=1.5),     # sky reflection streaks on the pane
     'glass_dirty': dict(color=(160, 175, 180), rough=0.2, metal=0.0, alpha=0.42, mode='BLEND', ior=1.5),
-    'rubber': dict(color=(24, 24, 24), rough=0.85, metal=0.0), 'tar': dict(color=(14, 14, 15), rough=0.9, metal=0.0),
+    'rubber': dict(color=(24, 24, 24), rough=0.85, metal=0.0), 'tar': dict(color=(78, 75, 70), rough=0.92, metal=0.0),
     'lamp_glass': dict(color=(255, 240, 200), rough=0.1, metal=0.0, alpha=0.6, mode='BLEND', emit=((255, 230, 170), 1.2)),
     'red_lens': dict(color=(210, 20, 20), rough=0.1, metal=0.0, emit=((255, 20, 10), 0.4)), 'amber_lens': dict(color=(240, 160, 10), rough=0.1, metal=0.0, emit=((255, 150, 0), 0.4)),
     'green_lens': dict(color=(20, 180, 90), rough=0.1, metal=0.0, emit=((20, 255, 110), 0.4)),

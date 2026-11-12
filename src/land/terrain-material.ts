@@ -33,7 +33,7 @@ float rel(sampler2D t, vec2 uv) { return lum(texture2D(t, uv).rgb) / max(lum(tex
 vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
 void main() {
   vec3 n = normalize(vN);
-  float grain = vC.a, near = 1.0 - smoothstep(25.0, 420.0, vDist), mid = 1.0 - smoothstep(120.0, 1500.0, vDist);
+  float grain = vC.a, near = 1.0 - smoothstep(60.0, 900.0, vDist), mid = 1.0 - smoothstep(120.0, 2500.0, vDist);
   vec2 p = vW.xz;
   float g1 = rel(grassTex, p * 0.41), g2 = rel(grassTex, p * 0.047 + 3.1);
   float s1 = rel(soilTex, p * 0.55 + 7.7), s2 = rel(soilTex, p * 0.061);
@@ -47,6 +47,9 @@ void main() {
   vec3 base = pow(vC.rgb, vec3(2.2));
   float hue = vn(vW.xz * 0.0021 + 11.0), hue2 = vn(vW.xz * 0.009 + 5.0);
   base *= mix(vec3(1.12, 1.0, 0.8), vec3(0.86, 0.98, 0.84), smoothstep(0.35, 0.7, hue)) * (0.82 + 0.36 * hue2);
+  // patchy ground: dry gold, bleached straw, and darker earth in broad drifts, so that flat ground seen from above is not one olive tone
+  float drift = vn(vW.xz * 0.045 + 31.0) * 0.6 + vn(vW.xz * 0.19 + 8.0) * 0.4;
+  base *= mix(vec3(0.72, 0.66, 0.58), vec3(1.28, 1.2, 1.02), smoothstep(0.25, 0.75, drift));
   base *= mix(1.0, detail, 0.82 * near) * (1.0 + g * grain * 0.55 * near) * (1.0 + big * 0.5 * mid);
   // green hollows: the flat ground in patches, after rain-fed pockets of the hills
   float pocket = smoothstep(0.58, 0.8, vn(vW.xz * 0.0035 + 21.0) * 0.65 + vn(vW.xz * 0.013 + 4.0) * 0.35) * smoothstep(0.9, 0.985, n.y) * (1.0 - slopeK);
