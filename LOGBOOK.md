@@ -52,3 +52,4 @@ Every operation made to create the game: local time and description.
 | 2026-11-12 09:00 | Scene 2: the cages are pushed physically with the shoulder on engine rigid-body physics (owner's decision; the game also demonstrates the engine's physics). |
 | 2026-11-12 09:00 | Scene 2: the steamer comes to the pier by itself (AI); a cage pushed before the steamer is alongside sinks and the take is failed (owner's decision). |
 | 2026-11-12 09:01 | Scene 2: the steamer arrives a fixed time after the take starts, steered by a library sailor (chr-human-mh-sailor, MetaHuman merchant seaman; заимствовано из Феррета). |
+| 2026-11-12 09:03 | Scene 2 fleet decided: 2 destroyers (indestructible, fires and explosions allowed), 4 yachts (slow sinking from bullets, burn and explode from the bazooka), 6 boats (sink from bullets, blown apart by the bazooka); all from the library as instances with livery variants (library has one model of each kind). |

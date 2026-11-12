@@ -101,3 +101,15 @@ Every asset is listed in the logbook with its origin: "заимствовано 
 - Music source.
 - Scene 2 and scene 3 mechanics and controls.
 - Cost by destroyed props (only if time allows).
+
+### Scene 2 roadstead fleet (owner's decision 2026-11-12)
+
+All vessels from the library (заимствовано из Феррета). Library has one model of each kind: Fletcher-class destroyer (mdl-fletcher), motor yacht Sundowner (mdl-sundowner), RNLI lifeboat Lucy Lavers (mdl-lucy-lavers), PT-boat parts, U-boat; the fleet is instances of these with different liveries, scale and trim, plus any further boats found in the Dunkirk sample.
+
+| Kind | Count | Behaviour |
+|---|---|---|
+| Destroyer | 2 | indestructible; fires and explosions can break out on them |
+| Yacht | 4 | sink slowly from bullets; set on fire and explode from the bazooka |
+| Boat | 6 | sink from bullets; blown to pieces by the bazooka |
+
+Score: mostly ships destroyed (yachts and boats count; destroyers count for fires and explosions staged on them), less for "killed" henchmen.
