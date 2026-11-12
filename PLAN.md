@@ -129,3 +129,5 @@ Steamer route (owner's correction): as the destroyer in the Dunkirk sample, the 
 Penalties (waiting, extra steamer passes) are shown to the player only through the director's reaction; they are subtracted from the scene's points, which stay hidden. No counter.
 
 Director during takes (all scenes): he shouts and gestures along the way, reacting to what happens (hurry, praise, despair). LOWER PRIORITY by the owner's explicit order (2026-11-12): built after everything else; the director's reaction after the take stays as planned.
+
+Order of work (owner's order 2026-11-12): NO work on scene 2 until scene 1 is finished. The scene 2 description above is design only.

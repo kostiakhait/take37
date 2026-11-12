@@ -61,3 +61,4 @@ Every operation made to create the game: local time and description.
 | 2026-11-12 09:14 | Scene 2 steamer route: it comes in from the end of the mole like the destroyer in the sample: end cage first, then the middle one; if a cage is missed the steamer makes another pass, each pass costs score (owner's correction). |
 | 2026-11-12 09:14 | Scene 2: penalties for waiting and extra passes show only in the director's reaction and are subtracted from the hidden scene points; no counter (owner's decision). |
 | 2026-11-12 09:16 | All scenes: the director shouts and gestures during the take. Owner's explicit order: lower priority, to be done after the rest. |
+| 2026-11-12 09:17 | Owner's order: no work on scene 2 (steamer detailing, Dunkirk-based set, people) until scene 1 is finished. Scene 2 stays design only in PLAN.md. |
