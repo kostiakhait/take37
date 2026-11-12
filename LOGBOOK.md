@@ -57,3 +57,4 @@ Every operation made to create the game: local time and description.
 | 2026-11-12 09:04 | Scene 2: henchmen shoot without damage; destroyers fire guns, AA guns fire at aircraft; the whole entourage of the Ferret Dunkirk sample (beach, mole, wrecks, crowd, dunes, sea, weather, air war) is reproduced as the set (owner's decision). |
 | 2026-11-12 09:07 | Scene 2: fewer soldiers, smaller playing field, no evacuation queue; two kinds of people: henchmen (khaki soldiers) and storming sailors (the steamer's crew); optional distant assault scene for atmosphere, no camera approach (owner's decision). |
 | 2026-11-12 09:07 | Scene 2: the mole is 250 m long (owner's decision). |
+| 2026-11-12 09:08 | Scene 2: one cage in the middle of the mole, one at the end; the steamer comes alongside at both places in turn; Matthew must reach the cage when the steamer arrives; waiting is a score penalty (owner's decision). |

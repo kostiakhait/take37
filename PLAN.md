@@ -121,3 +121,5 @@ Henchmen shoot at Matthew without doing damage (they knock him back at most). De
 Scale and people of scene 2 (owner's decision): fewer soldiers and a smaller playing field than the Dunkirk sample; no evacuation queue. Two kinds of people: (1) the villain's henchmen, library soldiers in khaki; (2) "sailors", who storm the villain's lair (the crew of the paddle steamer is of this kind). For atmosphere a further assault scene may be staged far away, with no camera approach (distant crowd only, through the engine's far-crowd impostors).
 
 Mole length: 250 m (the sample's is 1.1 km); about 40-50 s of running from the beach to the cages at the end.
+
+Cages: one in the middle of the mole, one at its end. The steamer comes alongside at both places in turn (there and here); Matthew must be at the cage when the steamer arrives. Waiting counts against the take (score penalty that grows with the time spent waiting), so he has to hurry and use the steamer's arrival windows. Exact order and timing of the arrivals: to be tuned in play.
