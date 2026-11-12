@@ -354,11 +354,11 @@ export class GameView {
     cam.position.set(driver[0] + (Math.random() - 0.5) * sh, driver[1] + (Math.random() - 0.5) * sh, driver[2] + (Math.random() - 0.5) * sh);
   }
   /** can a camera at `p` see the point `t` (no tree, post or building in the way)? one ray against the scene's meshes, the cars and the ground aside */
-  private clearView(p: V3, t: V3): boolean {
+  private clearView(p: V3, t: V3, slack = 1.5): boolean {
     const o = new BABYLON.Vector3(...p), d = new BABYLON.Vector3(t[0] - p[0], t[1] - p[1], t[2] - p[2]), len = d.length(); if (len < 2) return true;
     const ray = new BABYLON.Ray(o, d.scale(1 / len), len);
     const hit = this.scene.pickWithRay(ray, (m) => m.isEnabled() && m.getTotalVertices() > 0 && !/terrain|chunk|sky|dome|^car:|piece|debris|surround/i.test(m.name) && !this.isCarMesh(m));
-    return !hit?.hit || hit.distance > len - 1.5;
+    return !hit?.hit || hit.distance > len - slack;
   }
   private isCarMesh(m: BABYLON.Node): boolean { for (let n: BABYLON.Node | null = m; n; n = n.parent) if (n.name.startsWith('car:') || n.name.startsWith('debris')) return true; return false; }
   /** the set camera for the verdict: the one that saw the best moment if it can see the action, else the nearest that can; each also from higher up (a crane); the ray test settles it */
@@ -368,7 +368,19 @@ export class GameView {
     const pref = items[0]?.camera, list: SetCamera[] = [];
     const ordered = [...SET_CAMERAS].sort((a, b) => (a.id === pref ? -1e9 : Math.hypot(a.pos[0] - focus[0], a.pos[2] - focus[2])) - (b.id === pref ? -1e9 : Math.hypot(b.pos[0] - focus[0], b.pos[2] - focus[2])));
     for (const c of ordered) for (const up of [0, 3, 7]) list.push({ ...c, pos: [c.pos[0], c.pos[1] + up, c.pos[2]] });
-    for (const c of list) { const d = Math.hypot(c.pos[0] - focus[0], c.pos[2] - focus[2]); if (d > 6 && d < 330 && this.clearView(c.pos, focus)) return { ...c, target: focus }; }
+    // a frame is clean when the view is open to the action and to its sides (rays to five points across and one above it), and nothing stands in the first 8 m of the view cone (a trunk or post beside the lens)
+    const score = (c: SetCamera): number => {
+      const d = Math.hypot(c.pos[0] - focus[0], c.pos[2] - focus[2]); if (d <= 6 || d >= 330) return -1;
+      const fx = (focus[0] - c.pos[0]) / d, fz = (focus[2] - c.pos[2]) / d, px = -fz, pz = fx; let ok = 0, n = 0;
+      for (const o of [-4, -2, 0, 2, 4]) { n++; if (this.clearView(c.pos, [focus[0] + px * o, focus[1], focus[2] + pz * o])) ok++; }
+      n++; if (this.clearView(c.pos, [focus[0], focus[1] + 2, focus[2]])) ok++;
+      const half = c.fov * 0.5 * 1.3;
+      for (const a of [-half, 0, half]) { n++; const ca = Math.cos(a), sa = Math.sin(a); if (this.clearView(c.pos, [c.pos[0] + (fx * ca - fz * sa) * 9, c.pos[1] + (focus[1] - c.pos[1]) / d * 9, c.pos[2] + (fx * sa + fz * ca) * 9], 0.5)) ok++; }
+      return ok / n;
+    };
+    let best: SetCamera | null = null, bs = -1;
+    for (const c of list) { const q = score(c); if (q >= 1) return { ...c, target: focus }; if (q > bs) { bs = q; best = c; } }
+    if (best && bs > 0.5) return { ...best, target: focus };
     return { ...SET_CAMERAS[0]!, pos: [focus[0] - 30, 8, 14], target: focus };
   }
   dispose() { this.vfxView.dispose?.(); }
