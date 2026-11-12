@@ -11,6 +11,7 @@ argv = sys.argv[1:]
 OUT = pathlib.Path(argv[argv.index('--out') + 1] if '--out' in argv else 'D:/temp/take37/street/tex')
 FONTS = pathlib.Path('D:/python310/lib/site-packages/matplotlib/mpl-data/fonts/ttf')
 F = lambda s, b=True: ImageFont.truetype(str(FONTS / ('DejaVuSans-Bold.ttf' if b else 'DejaVuSans.ttf')), s)  # noqa: E731
+SRED = (140, 10, 18)
 RED, YEL, WHT, BLK, BLU = (196, 30, 36), (246, 196, 28), (244, 244, 240), (16, 16, 18), (24, 52, 112)
 SEG = {'0': 'abcdef', '1': 'bc', '2': 'abdeg', '3': 'abcdg', '4': 'bcfg', '5': 'acdfg', '6': 'acdefg', '7': 'abc', '8': 'abcdefg', '9': 'abcdfg', ' ': ''}
 
@@ -105,11 +106,11 @@ def stele():
     W, H = 1024, 1792
     im = Image.new('RGB', (W, H), (232, 232, 228))
     d = ImageDraw.Draw(im)
-    d.rectangle((0, 0, W - 1, 560), fill=RED)
+    d.rectangle((0, 0, W - 1, 560), fill=SRED)
     d.rectangle((0, 520, W - 1, 580), fill=YEL)
     logo(d, 512, 270, 210)
     d.text((512, 500), 'VALDOR', font=F(100), fill=WHT, anchor='mm')
-    for i, (lab, pr, col) in enumerate((('REGULAR', '84', (150, 150, 150)), ('UNLEADED', '89', (30, 130, 70)), ('SUPER UNLEADED', '99', RED))):
+    for i, (lab, pr, col) in enumerate((('REGULAR', '84', (150, 150, 150)), ('UNLEADED', '89', (30, 130, 70)), ('SUPER UNLEADED', '99', SRED))):
         y = 600 + i * 390
         d.rectangle((24, y, W - 25, y + 372), fill=(12, 12, 14), outline=WHT, width=8)
         d.rectangle((24, y, W - 25, y + 78), fill=col)

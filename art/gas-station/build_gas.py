@@ -138,9 +138,10 @@ def pump_hoses(lod, name, seed):
     res = []
     for s in (-1, 1):
         nm = 'A' if s > 0 else 'B'
-        pts = [V((s * 0.30, s * 0.27, 1.26)), V((s * 0.52, s * 0.31, 1.44)), V((s * 0.74, s * 0.28, 1.25)), V((s * 0.78, s * 0.14, 1.08)), V((s * 0.62, 0.0, 1.14)), V((s * 0.57, 0.0, 1.12))]
+        # hose leaves the end plate above the holster and drops straight to the nozzle seated in the holster: nothing crosses the display
+        pts = [V((s * 0.47, 0.0, 1.30)), V((s * 0.58, 0.0, 1.36)), V((s * 0.67, 0.0, 1.31)), V((s * 0.67, 0.0, 1.24)), V((s * 0.62, 0.0, 1.20)), V((s * 0.57, 0.0, 1.185))]
         sm = []
-        n = 10 if hi else 3
+        n = 8 if hi else 2
         for i in range(len(pts) - 1):
             p0, p1, p2, p3 = pts[max(i - 1, 0)], pts[i], pts[i + 1], pts[min(i + 2, len(pts) - 1)]
             for k in range(n):
@@ -149,14 +150,14 @@ def pump_hoses(lod, name, seed):
         sm.append(pts[-1])
         h = MB(f'Hose_{name}_{nm}_LOD{lod}', seed + s)
         h.tone = lambda p: (0.85, 0.85, 0.85)
-        h.tube(sm, 0.024 if hi else 0.022, 'rubber', seg=8 if hi else 4)
-        h.cyl(s * 0.30, s * 0.27, 1.20, 1.30, 0.03, 'chrome', seg=8 if hi else 4)
+        h.tube(sm, 0.014 if hi else 0.013, 'rubber', seg=8 if hi else 4)
+        h.box(s * 0.45 - 0.02, -0.03, 1.26, s * 0.45 + 0.02, 0.03, 1.34, 'chrome')
         ho = h.build(f'Hose_{name}_{nm}_LOD{lod}')
         nz = MB(f'Nozzle_{name}_{nm}_LOD{lod}', seed + 3 * s)
         nz.at(s * 0.57, 0.0, 0.94)
         nz.cyl(0.0, 0.0, -0.13, 0.0, 0.011, 'chrome', seg=8 if hi else 4)
         nz.box(-0.035, -0.045, 0.0, 0.035, 0.045, 0.2, 'black_metal', bv=0.008 if hi else 0)
-        nz.box(-0.03, -0.045, 0.2, 0.03, 0.045, 0.24, 'chrome')
+        nz.box(-0.03, -0.045, 0.2, 0.03, 0.045, 0.245, 'chrome')
         if hi:
             nz.tube([(0.0, 0.045, 0.1), (0.0, 0.1, 0.09), (0.0, 0.1, 0.02), (0.0, 0.045, 0.01)], 0.008, 'chrome', seg=5, caps=False)
             nz.box(-0.012, -0.075, 0.07, 0.012, -0.045, 0.1, 'paint_red', bv=0.003)
@@ -176,11 +177,11 @@ def canopy_body(m, hi):
         m.box(x0, y0, fz0, x1, y1, fz1, 'paint_white', bv=0.03 if hi else 0)
     for xf, o in ((ox0, -1), (ox1, 1)):
         d = 0.012 * o
-        for (za, zb, mt) in ((CZ + 0.38, CZ + 0.62, 'paint_red'), (CZ + 0.32, CZ + 0.36, 'paint_yellow'), (CZ + 0.64, CZ + 0.67, 'paint_yellow')):
+        for (za, zb, mt) in ((CZ + 0.38, CZ + 0.62, 'redband'), (CZ + 0.32, CZ + 0.36, 'paint_yellow'), (CZ + 0.64, CZ + 0.67, 'paint_yellow')):
             m.box(min(xf, xf + d), oy0, za, max(xf, xf + d), oy1, zb, mt)
     for yf, o in ((oy0, -1), (oy1, 1)):
         d = 0.012 * o
-        for (za, zb, mt) in ((CZ + 0.38, CZ + 0.62, 'paint_red'), (CZ + 0.32, CZ + 0.36, 'paint_yellow'), (CZ + 0.64, CZ + 0.67, 'paint_yellow')):
+        for (za, zb, mt) in ((CZ + 0.38, CZ + 0.62, 'redband'), (CZ + 0.32, CZ + 0.36, 'paint_yellow'), (CZ + 0.64, CZ + 0.67, 'paint_yellow')):
             m.box(ox0, min(yf, yf + d), za, ox1, max(yf, yf + d), zb, mt)
     if hi:
         for k in range(int((oy1 - oy0) / 0.4)):
@@ -252,25 +253,25 @@ def column_body(m, hi):
 
 # ---------------------------------------------------------------- price stele
 def stele_body(m, hi):
+    """10.3 m: concrete foot, steel pole, lit double-sided cabinet 2.0 x 3.5 m (0.4 m thick) at 6.3..9.8 m; faces look along the street (+-Y)."""
     m.box(-0.8, -0.8, 0.0, 0.8, 0.8, 0.2, 'kerb', bv=0.03 if hi else 0)
     m.box(-0.5, -0.5, 0.2, 0.5, 0.5, 0.75, 'concrete', bv=0.04 if hi else 0)
-    m.box(-0.2, -0.2, 0.75, 0.2, 0.2, 5.3, 'paint_grey', bv=0.02 if hi else 0)
+    m.box(-0.2, -0.2, 0.75, 0.2, 0.2, 6.5, 'paint_grey', bv=0.02 if hi else 0)
     m.box(-0.34, -0.34, 0.75, 0.34, 0.34, 0.85, 'paint_dark', bv=0.01 if hi else 0)
     if hi:
-        for z in (2.0, 3.5):
+        for z in (2.0, 3.5, 5.0):
             m.box(-0.23, -0.23, z, 0.23, 0.23, z + 0.05, 'paint_dark')
         for (x, y) in ((0.42, 0.42), (-0.42, 0.42), (-0.42, -0.42), (0.42, -0.42)):
             m.cyl(x, y, 0.75, 0.82, 0.03, 'steel', seg=6)
-    zc0, zc1, w = 5.0, 8.5, 1.0
-    m.box(-0.35, -w - 0.1, zc0 - 0.1, 0.35, w + 0.1, zc1 + 0.15, 'paint_dark', bv=0.03 if hi else 0, skip=('+y', '-y'))
+    zc0, zc1, w, th = 6.3, 9.8, 1.0, 0.2
+    m.box(-w - 0.06, -th, zc0 - 0.08, w + 0.06, th, zc1 + 0.08, 'paint_dark', bv=0.03 if hi else 0, skip=('+y', '-y'))
     for s in (-1, 1):
-        y = s * (w + 0.12)
+        y = s * (th + 0.003)
         a, b = (w, -w) if s > 0 else (-w, w)
         m.face([(a, y, zc0), (b, y, zc0), (b, y, zc1), (a, y, zc1)], 'pricesign', out=(0, s, 0), uv=[(0, 0), (1, 0), (1, 1), (0, 1)])
-        ya, yb = (y - 0.11, y + 0.01) if s > 0 else (y - 0.01, y + 0.11)
-        m.box(-0.36, ya, zc0 - 0.12, 0.36, yb, zc0, 'paint_red')
-        m.box(-0.36, ya, zc1, 0.36, yb, zc1 + 0.17, 'paint_red')
-    m.box(-0.3, -w, zc1 + 0.15, 0.3, w, zc1 + 0.22, 'steel', bv=0.01 if hi else 0)
+        m.box(-w - 0.06, th * (1 if s > 0 else -1.05), zc0 - 0.08, w + 0.06, th * (1.05 if s > 0 else -1), zc1 + 0.08, 'redband', skip=('+y', '-y')) if False else None
+    m.box(-w - 0.1, -th - 0.01, zc1 + 0.08, w + 0.1, th + 0.01, zc1 + 0.2, 'redband', bv=0.01 if hi else 0)
+    m.box(-w - 0.1, -th - 0.01, zc0 - 0.2, w + 0.1, th + 0.01, zc0 - 0.08, 'redband', bv=0.01 if hi else 0)
 
 
 # ---------------------------------------------------------------- small destructibles
@@ -568,7 +569,7 @@ def details_body(m, hi):
 
     for y in ISL_Y:
         for side in (-1, 1):
-            for k in range(7 if hi else 3):
+            for k in range(14 if hi else 5):
                 decal(ISL_X + rnd.uniform(-3.4, 3.4), y + side * rnd.uniform(1.7, 3.0), rnd.uniform(1.0, 2.6), rnd.uniform(1.0, 2.6), rnd.uniform(0, 6.28), rnd.choice([0, 1, 9]), 0.006 + 0.0004 * k)
             decal(ISL_X + rnd.uniform(-2.5, 2.5), y + side * 1.15, 3.2, 1.5, 0.0, 9, 0.0075)
     for (x, y) in ((6, -26), (30, -2), (8, 22), (31, 27), (22, 9), (5, -7), (28, 14)):
@@ -613,6 +614,12 @@ def details_body(m, hi):
                 a = j * math.pi / 4
                 m.cyl(x + 0.35 * math.cos(a), y + 0.35 * math.sin(a), 0.014, 0.034, 0.02, 'steel', seg=6)
             m.cyl(x + 0.26, y, 0.02, 0.06, 0.04, 'paint_yellow', seg=8)
+    for y in ISL_Y:
+        for side in (-1, 1):
+            for k in range(4):
+                decal(ISL_X + rnd.uniform(-4.5, 4.5), y + side * rnd.uniform(1.6, 3.4), 1.6, rnd.uniform(5, 8), math.pi / 2 + rnd.uniform(-0.25, 0.25), 7, 0.0082 + 0.0003 * k)
+    for k in range(10):
+        decal(rnd.uniform(11, 21), rnd.uniform(-20, 20), rnd.uniform(1.5, 3.5), rnd.uniform(1.5, 3.5), rnd.uniform(0, 6.28), rnd.choice([0, 1, 9]), 0.0088 + 0.0002 * k)
     decal(24.8, 24.0, 2.0, 2.0, 0.0, 9, 0.0078)
 
 
@@ -644,7 +651,7 @@ def build():
             K.empty(f'Fire_{nm}_top', loc=(ISL_X + jx, y, 2.0), parent=R, collection=CM, size=0.3)
             K.empty(f'Fire_{nm}_hose', loc=(ISL_X + jx + 0.7, y, 1.1), parent=R, collection=CM, size=0.3)
             pidx += 1
-    lodnode('PriceSign', stele_body, loc=(3.2, 30.5, 0.0), props={'mass_kg': 900, 'role': 'price stele, 8.7 m, lit', 'lit': 1}, seed=9)
+    lodnode('PriceSign', stele_body, loc=(3.2, 30.5, 0.0), props={'mass_kg': 900, 'role': 'price stele, 10 m, lit', 'lit': 1}, seed=9)
     lodnode('AirStand', air_body, loc=(24.5, 24.0, 0.0), rz=math.pi, props={'mass_kg': 90, 'role': 'air and water stand'}, seed=12)
     lodnode('IceChest', icechest_body, loc=(SX0 - 0.7, -10.9, 0.0), props={'mass_kg': 260, 'role': 'packaged ice freezer'}, seed=13)
     lodnode('PropaneCage', propane_body, loc=(SX0 - 0.7, -22.0, 0.0), props={'burnable': 1, 'mass_kg': 140, 'role': 'propane exchange cage', 'explosive': 1}, seed=14)
