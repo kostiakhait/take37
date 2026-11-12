@@ -10,6 +10,15 @@ export interface PlantData extends MeshData { colors: Float32Array }
 
 class Mesh {
   pos: number[] = []; col: number[] = []; idx: number[] = [];
+  /** vertices that keep a normal of their own (leaf cards shade as a volume: the normal points out of the crown, not along the card) */
+  own = new Map<number, C3>();
+  /** a leaf card (a diamond of two triangles with a kink along its middle) at `c`, its long axis along `ax`, its width axis along `bx`; the normal `n` is the crown's, `c0` at the base and `c1` at the tip */
+  leaf(c: C3, ax: C3, bx: C3, l: number, w: number, n: C3, c0: C3, c1: C3) {
+    const p = (t: number, s: number, up: number): C3 => [c[0] + ax[0] * l * t + bx[0] * w * s + n[0] * up, c[1] + ax[1] * l * t + bx[1] * w * s + n[1] * up, c[2] + ax[2] * l * t + bx[2] * w * s + n[2] * up];
+    const a = this.vert(...p(0, 0, 0), c0), b = this.vert(...p(0.42, -1, 0.012), mix3(c0, c1, 0.45)), d = this.vert(...p(0.42, 1, 0.012), mix3(c0, c1, 0.45)), e = this.vert(...p(1, 0, 0), c1);
+    this.tri(a, b, d); this.tri(b, e, d);
+    for (const k of [a, b, d, e]) this.own.set(k, n);
+  }
   vert(x: number, y: number, z: number, c: C3): number { this.pos.push(x, y, z); this.col.push(c[0], c[1], c[2], 1); return this.pos.length / 3 - 1; }
   tri(a: number, b: number, c: number) { this.idx.push(a, b, c); }
   tube(p: C3, q: C3, r0: number, r1: number, seg: number, c0: C3, c1: C3) {
@@ -49,6 +58,7 @@ class Mesh {
       const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; for (const k of [a, b, c]) { nor[k * 3] += nx; nor[k * 3 + 1] += ny; nor[k * 3 + 2] += nz; }
     }
     for (let i = 0; i < nor.length; i += 3) { const l = Math.hypot(nor[i], nor[i + 1], nor[i + 2]) || 1; nor[i] /= l; nor[i + 1] /= l; nor[i + 2] /= l; }
+    for (const [k, n] of this.own) { const l = Math.hypot(n[0], n[1], n[2]) || 1; nor[k * 3] = n[0] / l; nor[k * 3 + 1] = n[1] / l; nor[k * 3 + 2] = n[2] / l; }
     // the normals of a leaf mass point away from its middle, not along the faces: a canopy lit as one soft mass, not a heap of facets
     return { positions: pos, normals: nor, indices: idx, colors: Float32Array.from(this.col) };
   }
@@ -73,15 +83,28 @@ export function oak(seed: number, variant: number): PlantData {
     const a2 = a + 0.9 * (hash2(variant, 40 + i, s) - 0.5) * 2, t2: C3 = [mid[0] + Math.cos(a2) * 0.28, mid[1] + 0.2, mid[2] + Math.sin(a2) * 0.28];
     m.tube(mid, t2, 0.03, 0.012, 5, BARK_HI, BARK_HI); crown.push(t2);
   }
-  const dark: C3 = [0.03, 0.05, 0.022], mid: C3 = [0.07, 0.105, 0.04], light: C3 = [0.17, 0.215, 0.07];
-  const n = 46 + Math.floor(10 * hash2(variant, 5, s));
+  // the crown: leaf cards in a mound of masses, as the street trees' crowns are made of sprig cards: an olive-green evergreen with sunlit tops, dark hollows inside, a ragged outline
+  // (colours are sRGB in the vertex colour and are squared by the plant shader, so the greens sit well above the dark of the old domes)
+  const dark: C3 = [0.14, 0.2, 0.07], mid: C3 = [0.25, 0.33, 0.1], light: C3 = [0.42, 0.49, 0.16], dry: C3 = [0.52, 0.47, 0.19];
+  const n = 40 + Math.floor(8 * hash2(variant, 5, s)), tone = 0.85 + 0.18 * hash2(variant, 6, s), mound: C3 = [lean * 0.4, 0.42, 0];
   for (let i = 0; i < n; i++) {
-    const k = hash2(variant, 100 + i, s), a = hash2(variant, 200 + i, s) * 6.283, r = (0.25 + 0.75 * Math.sqrt(hash2(variant, 300 + i, s))) * 0.86;
-    // a mound: a dome 0.55 high over a footprint 0.86 in radius, the masses on its shell and a few inside; low masses brush the ground
-    const dome = Math.sqrt(Math.max(0, 1 - (r / 0.95) ** 2)), y = 0.2 + 0.62 * dome * (0.55 + 0.45 * hash2(variant, 400 + i, s)), tier = Math.min(1, Math.max(0, (y - 0.18) / 0.6));
-    const c = crown[i % crown.length], cx = Math.cos(a) * r + (c[0]) * 0.18, cz = Math.sin(a) * r + c[2] * 0.18;
-    const size = 0.2 + 0.13 * k;
-    m.mass([cx, y, cz], size * 1.25, size * 0.85, size * 1.25, s + i, 0.3, mix3(dark, mid, tier * 0.5), mix3(mid, light, 0.25 + 0.75 * tier), 3, 6);
+    const k = hash2(variant, 100 + i, s), a = hash2(variant, 200 + i, s) * 6.283, r = (0.2 + 0.8 * Math.sqrt(hash2(variant, 300 + i, s))) * 0.88;
+    const dome = Math.sqrt(Math.max(0, 1 - (r / 0.98) ** 2)), y = 0.2 + 0.62 * dome * (0.55 + 0.45 * hash2(variant, 400 + i, s)), tier = Math.min(1, Math.max(0, (y - 0.18) / 0.6));
+    const c = crown[i % crown.length], cx = Math.cos(a) * r + c[0] * 0.18, cz = Math.sin(a) * r + c[2] * 0.18, size = 0.18 + 0.12 * k;
+    const lo = mix3(dark, mid, 0.25 + tier * 0.5), hi = mix3(mid, light, 0.2 + 0.8 * tier);
+    for (let j = 0; j < 17; j++) {
+      // a point on a lumpy ball round the mass's heart; the card stands along the outward direction with a random twist, so the outline breaks into tufts
+      const u = hash2(variant * 31 + i, 500 + j, s) * 6.283, v = hash2(variant * 31 + i, 600 + j, s) * 2 - 1, rr = Math.sqrt(1 - v * v), shell = 0.45 + 0.55 * Math.sqrt(hash2(variant * 31 + i, 700 + j, s));
+      const dx = Math.cos(u) * rr, dy = v, dz = Math.sin(u) * rr;
+      const px = cx + dx * size * 1.25 * shell, py = y + dy * size * 0.85 * shell, pz = cz + dz * size * 1.25 * shell;
+      const nx = px - mound[0], ny = (py - mound[1]) * 1.5 + 0.35, nz = pz - mound[2], nl = Math.hypot(nx, ny, nz) || 1, nn: C3 = [nx / nl, ny / nl, nz / nl];
+      const t = hash2(variant * 31 + i, 800 + j, s), tw = hash2(variant * 31 + i, 900 + j, s) * 6.283;
+      // long axis: the outward direction bent by a random tilt; width axis: perpendicular to it
+      let ax: C3 = [dx + Math.cos(tw) * 0.7, dy * 0.6 + 0.2 + Math.sin(tw) * 0.5, dz + Math.sin(tw) * 0.7]; const al = Math.hypot(...ax) || 1; ax = [ax[0] / al, ax[1] / al, ax[2] / al];
+      let bx: C3 = [ax[1] * nn[2] - ax[2] * nn[1], ax[2] * nn[0] - ax[0] * nn[2], ax[0] * nn[1] - ax[1] * nn[0]]; const bl = Math.hypot(...bx) || 1; bx = [bx[0] / bl, bx[1] / bl, bx[2] / bl];
+      const base = t < 0.06 ? dry : mix3(lo, hi, 0.25 + 0.75 * hash2(variant * 31 + i, 1000 + j, s)), tip = mix3(base, light, 0.35), sc = tone;
+      m.leaf([px, py, pz], ax, bx, 0.115 * (0.8 + 0.5 * t), 0.058 * (0.8 + 0.5 * t), nn, [base[0] * sc, base[1] * sc, base[2] * sc], [tip[0] * sc, tip[1] * sc, tip[2] * sc]);
+    }
   }
   return m.done();
 }
@@ -90,7 +113,7 @@ const mix3 = (a: C3, b: C3, t: number): C3 => [a[0] + (b[0] - a[0]) * t, a[1] + 
 /** a dry chaparral / sagebrush bush: a hummock of grey-olive masses, a few dry stems showing at its foot */
 export function sage(seed: number, variant: number): PlantData {
   const s = subSeed(seed, 1100 + variant * 29), m = new Mesh();
-  const dark: C3 = [0.16, 0.17, 0.09], light: C3 = [0.48, 0.47, 0.27];
+  const dark: C3 = [0.28, 0.29, 0.14], light: C3 = [0.6, 0.58, 0.34];   // grey-olive, lit enough to read as a bush and not a black blob at 100 m
   for (let i = 0; i < 9; i++) {
     const a = hash2(variant, i, s) * 6.283, r = 0.28 * Math.sqrt(hash2(variant, 20 + i, s)), y = 0.26 + 0.22 * (1 - r / 0.3) + 0.06 * hash2(variant, 40 + i, s);
     m.mass([Math.cos(a) * r, y, Math.sin(a) * r], 0.2, 0.17, 0.2, s + i, 0.3, dark, mix3(dark, light, 0.4 + 0.6 * hash2(variant, 60 + i, s)), 3, 7);

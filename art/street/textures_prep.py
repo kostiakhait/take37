@@ -261,17 +261,17 @@ def decals():
     put(3, cracks(4, 8))
     pn = tileable_noise(S, 1.4, 9)                              # 4: patch of newer asphalt with a tar-sealed edge
     patch = np.zeros((S, S, 4), np.uint8)
-    patch[..., :3] = (np.array([30, 30, 32]) * (0.85 + 0.4 * pn[..., None])).astype(np.uint8)
+    patch[..., :3] = (np.array([66, 66, 69]) * (0.82 + 0.4 * pn[..., None])).astype(np.uint8)   # newer asphalt is only a little darker than the road (asphalt_c is 77): a near-black patch read as a hole
     yy, xx = np.mgrid[0:S, 0:S]
     edge = np.minimum(np.minimum(xx, S - 1 - xx), np.minimum(yy, S - 1 - yy)) / 36.0       # irregular, torn edge: noise bites into the rectangle
     bite = tileable_noise(S, 1.2, 21)
-    patch[..., 3] = (np.clip((edge + (bite - 0.5) * 1.6) * 3.0, 0, 1) * 255).astype(np.uint8)
+    patch[..., 3] = (np.clip((edge + (bite - 0.5) * 1.6) * 3.0, 0, 1) * 0.8 * 255).astype(np.uint8)
     im = Image.fromarray(patch.copy(), 'RGBA')
     d = ImageDraw.Draw(im)
-    d.rectangle((14, 14, S - 15, S - 15), outline=(8, 8, 8, 255), width=6)
+    d.rectangle((14, 14, S - 15, S - 15), outline=(40, 40, 42, 200), width=5)   # the tar-sealed edge, a thin dark line
     for _ in range(3000):
         x, y = rng.integers(8, S - 8, 2)
-        v = int(rng.integers(20, 70))
+        v = int(rng.integers(45, 95))
         d.point((int(x), int(y)), fill=(v, v, v + 2, 255))
     put(4, im)
     im = blank()                                                  # 5: manhole cover, cast iron, round
@@ -302,7 +302,7 @@ def decals():
     put(8, cracks(5, 3))
     put(9, stain(6, (14, 10, 6)))
     im = Image.fromarray(patch.copy(), 'RGBA')                    # 10: utility-cut trench strip
-    ImageDraw.Draw(im).rectangle((0, 0, S - 1, S - 1), outline=(8, 8, 8, 255), width=5)
+    ImageDraw.Draw(im).rectangle((0, 0, S - 1, S - 1), outline=(40, 40, 42, 200), width=4)
     put(10, im)
     atlas.save(OUT / 'decals_c.png')
 

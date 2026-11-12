@@ -14,6 +14,7 @@ import { GENERATORS, OAKS, SHRUBS, STONES, STONE_GENERATORS } from '../land/plan
 import { plantMaterial } from '../land/plant-material';
 import { buildSurround } from '../land/surround';
 import { terrainMaterial } from '../land/terrain-material';
+import { pinTerrain } from '../land/terrain-cache';
 import { ROADS_BOX, roadsTexture } from '../land/roads-map';
 import { buildPowerLines, type LineSpec } from '../land/powerline';
 import { SkyDome, lookOf, type Look } from '../weather/sky';
@@ -57,6 +58,8 @@ export interface SetOptions {
 
 /** the most time `start()` spends building the land before the first frame; what is left is built by the frames (a chunk budget each) while the splash is still up */
 const PRIME_MS = 3000;
+/** the most time `start()` spends on the land of the other places the game looks from (the rest was built while the page loaded) */
+const PINS_MS = 12000;
 const base = (name: string) => name.replace(/_LOD[01]$/, '');
 const split = (url: string) => { const i = url.lastIndexOf('/'); return [url.slice(0, i + 1), url.slice(i + 1)] as const; };
 
@@ -160,6 +163,7 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
     sun: first.sunDir, sunColor: first.sunColor, ambient: first.hemiSky, haze: first.hazeColor, hazeDensity: first.hazeDensity,
     material: (sc) => terrainMaterial(sc, tex, { tex: roadsTexture(sc), box: ROADS_BOX }),
   });
+  const pins = pinTerrain(terrain);   // the land of every place the game looks from is built ahead and kept (src/land/terrain-cache.ts)
 
   // ---- wind: the field everything reads ----
   const wind = new WindField(scene, weather);
@@ -175,7 +179,7 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
   upright(street.meshes[0]);
   for (const m of street.meshes.slice()) if (/^COL_/.test(m.name)) m.dispose();   // collision stand-ins are not drawn
   options.onStreetLoaded?.(street, scene);
-  roofMaterial(scene);
+  if (q.get('roof') !== 'glb') roofMaterial(scene);   // ?roof=glb shows the glb's own tar for comparison
   const nodes = new Map<string, BABYLON.TransformNode>(); for (const n of street.transformNodes) nodes.set(n.name, n);
   for (const m of street.meshes) if (m.name === 'Ground') m.dispose();                       // the land is the terrain's now: one ground, flat under the set
   for (const m of street.meshes) { m.computeWorldMatrix(true); m.isPickable = false; m.receiveShadows = true; if (m.getTotalVertices() > 0) m.alwaysSelectAsActiveMesh = false; }
@@ -280,11 +284,12 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
   const bushes = new ScatterView(scene, { ground, species: SHRUBS, cell: 48, radius: lite ? 100 : 200, cellsPerUpdate: 2, generators: GENERATORS });
   const stones = new ScatterView(scene, { ground, species: STONES, generators: STONE_GENERATORS, cell: 64, radius: lite ? 120 : 260, cellsPerUpdate: 1, tint: [1.02, 0.95, 0.84] });
   // ---- while the page loads (the downloads and the decoding leave the main thread idle) the land round the first view is built in slices, so that `start()` finds most of it done ----
-  let started = false, warmed = false;
+  let started = false, warmed = false, first_done = false;
   const warm = () => {
     if (started || warmed) return;
     const c = camera.globalPosition, p: [number, number, number] = [c.x, c.y, c.z], t0 = performance.now();
-    do { const st = terrain.update(p); oaks.update(p); bushes.update(p); stones.update(p); if (st.pending === 0) { warmed = true; break; } } while (performance.now() - t0 < 12);
+    if (!first_done) { do { const st = terrain.update(p); oaks.update(p); bushes.update(p); stones.update(p); if (st.pending === 0) { first_done = true; break; } } while (performance.now() - t0 < 12); }
+    else if (pins.warm(12)) warmed = true;   // then the land of the other places the game looks from
     if (!warmed) setTimeout(warm, 4);
   };
   setTimeout(warm, 0);
@@ -402,12 +407,13 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
       await settleOnce(24);
     },
     settle: (frames = 30) => settleOnce(frames),
-    start() { if (started) return; started = true; const cp = camera.globalPosition, p: [number, number, number] = [cp.x, cp.y, cp.z]; const t0 = performance.now(); for (let i = 0; i < 400 && performance.now() - t0 < PRIME_MS; i++) { const s = terrain.update(p); oaks.update(p); bushes.update(p); stones.update(p); if (s.pending === 0) break; } lodUpdate(); game.start(); },
+    start() { if (started) return; started = true; const cp = camera.globalPosition, p: [number, number, number] = [cp.x, cp.y, cp.z]; const t0 = performance.now(); for (let i = 0; i < 400 && performance.now() - t0 < PRIME_MS; i++) { const s = terrain.update(p); oaks.update(p); bushes.update(p); stones.update(p); if (s.pending === 0) break; } lodUpdate(); const tp = performance.now(); while (performance.now() - tp < PINS_MS && !warmed) { if (pins.warm(50)) warmed = true; } { const c0 = camera.globalPosition; terrain.update([c0.x, c0.y, c0.z]); } game.start(); },
     stats() {
       const s = terrain.stats();
-      return { chunks: s.chunks, triangles: s.triangles, levels: JSON.stringify(s.levels), oaks: oaks.count(), surround: surround.count, bushes: bushes.count(), stones: stones.count(), grass: grass.drawn, litter: litter.airborne, sway: sway.materials, bakedTrees: scene.meshes.filter(m => m.isVerticesDataPresent(BABYLON.VertexBuffer.UV5Kind)).length, mergeFailed, merged: cells.length + castable.length, meshes: scene.meshes.length, active: scene.getActiveMeshes().length, fps: Math.round(engine.getFps()) };
+      return { chunks: s.chunks, triangles: s.triangles, levels: JSON.stringify(s.levels), oaks: oaks.count(), surround: surround.count, pinned: pins.built + '/' + pins.total + ' ' + pins.ms + 'ms', bushes: bushes.count(), stones: stones.count(), grass: grass.drawn, litter: litter.airborne, sway: sway.materials, bakedTrees: scene.meshes.filter(m => m.isVerticesDataPresent(BABYLON.VertexBuffer.UV5Kind)).length, mergeFailed, merged: cells.length + castable.length, meshes: scene.meshes.length, active: scene.getActiveMeshes().length, fps: Math.round(engine.getFps()) };
     },
   };
+  scene.onBeforeRenderObservable.add(() => { if (!warmed && started) { if (pins.warm(5)) warmed = true; const c0 = camera.globalPosition; terrain.update([c0.x, c0.y, c0.z]); } });   // the view of the camera is put back at once
   progress(0.9, 'Terrain');
   { const v0 = views().cab; aim(camera, v0.position, v0.target, v0.fov); }
   void WEATHER; void power;
