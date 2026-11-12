@@ -35,7 +35,7 @@ Contest game, theme "Director's Cut". Built on Ferret, delivered as an Unreal En
 | Edward (cameraman) | Black, middle-aged, dreadlocks, oversized clothes; inseparable from his camera | films the scenes |
 | Matthew (player) | young man, T-shirt and jeans, shoulder-length red hair | stuntman |
 
-Graphics: maximally realistic; models worked to excellent quality. Idle characters are never still: they gesture, look about and move about (a Ferret module, connected to the game when ready).
+Graphics: maximally realistic, AAA-class; models worked to excellent quality. Idle characters are never still: they gesture, look about and move about (a Ferret module, connected to the game when ready).
 
 ## 5. Scenes
 
