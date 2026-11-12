@@ -58,5 +58,5 @@ export const HUD_CSS = `
 #hud2 #h-call.cut { color: #ff5a4a; } #hud2 #h-call.wrap { color: #ffd45a; } #hud2 #h-call.slate { font-size: clamp(30px, 6vw, 70px); }
 #hud2 #h-caption { position: absolute; left: 50%; bottom: 12%; transform: translateX(-50%); width: min(980px, 92vw); text-align: center; font: italic 24px/1.4 Georgia, serif; background: rgba(8,8,10,.62); padding: 12px 18px; border-radius: 6px; }
 #hud2 #h-menu { position: absolute; left: 50%; top: 56%; transform: translateX(-50%); text-align: center; font: 22px/1.6 system-ui, sans-serif; background: rgba(8,8,10,.6); padding: 12px 22px; border-radius: 6px; } #hud2 #h-menu .go { color: #ffd45a; font-weight: 700; }
-#hud2 #h-pause { position: absolute; inset: 0; background: rgba(0,0,0,.55); display: none; align-items: center; justify-content: center; text-align: center; font: 700 64px Georgia, serif; padding-top: 30vh; }
+#hud2 #h-pause { position: absolute; inset: 0; background: rgba(0,0,0,.55); display: none; flex-direction: column; align-items: center; justify-content: center; text-align: center; font: 700 64px Georgia, serif; padding-top: 30vh; } #hud2 #h-pause small { font-size: 28px; font-weight: 400; }
 `;
