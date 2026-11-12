@@ -17,3 +17,4 @@ Every operation made to create the game: local time and description.
 | 2026-11-12 00:01 | Wrote the plan of the game (PLAN.md) and started the logbook (LOGBOOK.md). |
 | 2026-11-12 00:02 | Took the 1987 Corvette C4 convertible (Vincent's car) and the 1987 police sedan (Matthew's car) from the library into assets/borrowed (4 files: full and reduced detail of each). Origin: заимствовано из Феррета. |
 | 2026-11-12 00:02 | Decided to take every usable material and texture from the library; the rest of the scene-1 models are drawn for the game. |
+| 2026-11-12 00:02 | Launched three modelling tasks for scene 1: the street kit with the gas station, the fuel tanker, and the civilian traffic cars. |
