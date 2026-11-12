@@ -4,25 +4,39 @@ Built by `trees_kit.py` (Blender 4.2, headless), exported into `street_kit.glb` 
 
 | Kit item | Species | Colouring |
 |---|---|---|
-| StreetTree1 | sugar maple, round crown, one leader | summer green, yellow-green |
+| StreetTree1 | sugar maple, one leader | summer green |
 | StreetTree2 | American elm, vase crown, drooping tips | summer green |
 | StreetTree3 | oak, broad low crown, thick limbs | summer green |
-| StreetTree4 | maple | autumn mix (gold, red, a few green) |
-| StreetTree5 | elm | autumn mix (gold, ochre) |
-| StreetTree6 | oak | autumn mix (russet, orange) |
+| StreetTree4 | maple | autumn, red-orange |
+| StreetTree5 | elm | autumn, golden yellow |
+| StreetTree6 | oak | autumn, russet |
 
 Node names are unchanged (`StreetTreeN_LOD0` / `_LOD1` under the placed empties of `Static/`). Trees 1-3 are the old kit names; 4-6 are new. The layout places them in a fixed pseudo-random pattern.
 
 ## Geometry
 
 * One mesh per tree and LOD, primitives split by material: `bark` / `bark2` (library texture tex-bark01 / tex-bark02), `leaf_maple` / `leaf_elm` / `leaf_oak` (alpha-cut, `alphaMode MASK`, cutoff 0.5, double sided), plus the tree-pit parts (`soil`, `paint_dark`, `black_metal`).
-* The trunk and limbs are a real branching skeleton (trunk, limbs, branches, twigs); every branch is its own ring tube with its own id. Leaf clusters are cards, each hanging on the tip of one branch; the cards use painted cluster atlases (`leaf_<species>_c.png`, 2 x 2 cells: green, yellow-green, gold, red). Inner dark cards fill the crown so gaps show shaded foliage.
+* The trunk and limbs are a real branching skeleton (trunk, limbs, branches, twigs); every branch is its own ring tube with its own id. Foliage is sprig cards: each card (about 1 m) shows a fan of twigs with about 30 small leaves (4 variants per atlas, `leaf_<species>_c.png` summer, `leaf_<species>_a_c.png` autumn, 2 x 2 cells), anchored on a branch tip and growing along the branch; several thousand cards per tree give tens of thousands of leaves with sky and wood showing through the alpha gaps. Darker inner sprigs fill the middle of the crown. The crown envelope is lumpy (noise), so the silhouettes are irregular. One colour per tree (trees 1-3 summer green, 4 red-orange maple, 5 golden elm, 6 russet oak) with a light tone change by tier (lower crown darker) and by depth.
 * Leaf cards carry custom normals pointing out of the crown, so the crown is lit as a volume (a card is not shaded as a flat plane).
 * LOD0 about 10-24 k triangles, LOD1 about 3-7 k (fewer, larger cards, thinner skeleton; see the report for the exact numbers).
 
 ## Vertex data for the wind
 
-All values are per-vertex custom attributes in the glb (glTF accessors with names starting with `_`; three.js / Babylon.js expose them as `_SWAY`, `_FLUTTER`, ...). Positions are in the node's local space (glTF, Y up); the node origin is the foot of the trunk.
+Every value is stored twice in the glb, because Babylon.js's glTF loader (checked: @babylonjs/loaders 9.33.1 in the Ferret repo) drops custom `_ATTRIBUTES` and only delivers the standard channels:
+
+1. Custom glTF attributes `_SWAY`, `_FLUTTER`, `_PHASE`, `_BRANCH`, `_LEVEL`, `_PIVOT` (three.js and engines that keep unknown attributes see these).
+2. The same numbers in the extra UV sets, which Babylon loads as `uv2`..`uv5` (glTF `TEXCOORD_1..4`); the value is the raw number as read, no flip:
+
+| Babylon kind (glTF) | u | v |
+|---|---|---|
+| `uv2` (TEXCOORD_1) | `_SWAY` | `_FLUTTER` |
+| `uv3` (TEXCOORD_2) | `_PHASE` | `_BRANCH` |
+| `uv4` (TEXCOORD_3) | `_LEVEL` | `_PIVOT.x` |
+| `uv5` (TEXCOORD_4) | `_PIVOT.y` | `_PIVOT.z` |
+
+Use `mesh.getVerticesData('uv2')` etc. (stride 2). Positions and pivots are in the node's local glTF space (Y up).
+
+Attribute meanings (the custom `_` names below are also the names of the numbers in the UV table). Positions are in the node's local space (glTF, Y up); the node origin is the foot of the trunk.
 
 | Attribute | Type | Meaning |
 |---|---|---|

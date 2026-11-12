@@ -285,46 +285,92 @@ def cornice(m, spec, hi, x0, y0, y1, ztop):
         m.box(x0 - 0.0, y0 - 0.25, ztop, x0 + 0.1, y1 + 0.25, ztop + 0.6, wall)
 
 
-def fire_escape(m, hi, x0, yc, z_levels):
-    """Black iron platforms at each upper floor, a stair between them, a drop ladder."""
+def fire_escape(m, hi, x0, yc, z_levels, ground=0.17):
+    """Black iron fire escape, bolted to the wall: platforms with grating and rails on wall brackets and tie rods, zig-zag stair flights between them (inside the platform footprint,
+    opening at the end where the flights meet), and a counterweighted drop-ladder with a lower sliding section that reaches the sidewalk. z_levels: platform deck heights (bottom first).
+    x0 = wall face; everything is anchored to it with plates."""
     mat = 'black_metal'
-    pw, pd = 2.0, 1.0
-    for z in z_levels:
-        m.box(x0, yc - pw / 2, z - 0.06, x0 + pd, yc + pw / 2, z, mat, bv=0.004 if hi else 0)
+    pw, pd = 2.6, 1.05
+    n = len(z_levels)
+    sg = [1 if i % 2 == 0 else -1 for i in range(max(0, n - 1))]       # flight i: from platform i+1 (upper) to platform i, upper end at yc - sg*pw/2
+    sd = 5 if hi else 3
+
+    def open_end(k):
+        """+1 / -1 / 0: the platform end (sign of y offset) left open for the stair, 0 if none."""
+        if n == 1:
+            return 0
+        if k < n - 1:
+            return sg[k]
+        return -sg[n - 2]
+    for k, z in enumerate(z_levels):
+        oe = open_end(k)
+        m.box(x0 - 0.01, yc - pw / 2, z - 0.07, x0 + pd, yc + pw / 2, z, mat, bv=0.004 if hi else 0)                      # deck, against the wall
+        m.box(x0 + pd - 0.04, yc - pw / 2, z - 0.1, x0 + pd, yc + pw / 2, z, mat)                                       # front angle iron
         if hi:
-            for k in range(1, 14):                                                      # grating slots
-                m.box(x0 + 0.05, yc - pw / 2 + k * pw / 14, z + 0.001, x0 + pd - 0.05, yc - pw / 2 + k * pw / 14 + 0.012, z + 0.012, 'steel')
-        for (ax, ay, bx, by) in ((x0 + pd, yc - pw / 2, x0 + pd, yc + pw / 2), (x0, yc - pw / 2, x0 + pd, yc - pw / 2), (x0, yc + pw / 2, x0 + pd, yc + pw / 2)):
-            m.tube([(ax, ay, z + 1.0), (bx, by, z + 1.0)], 0.02, mat, seg=5 if hi else 3)
+            for q in range(1, 18):
+                m.box(x0 + 0.04, yc - pw / 2 + q * pw / 18, z + 0.001, x0 + pd - 0.06, yc - pw / 2 + q * pw / 18 + 0.012, z + 0.012, 'steel')
+        # rails: front and the closed side(s), posts at the corners
+        rails = [((x0 + pd, yc - pw / 2), (x0 + pd, yc + pw / 2))]
+        for s in (-1, 1):
+            if s != oe:
+                rails.append(((x0 + 0.02, yc + s * pw / 2), (x0 + pd, yc + s * pw / 2)))
+        for (ax, ay), (bx, by) in rails:
+            for hz in (1.0, 0.5):
+                m.tube([(ax, ay, z + hz), (bx, by, z + hz)], 0.02 if hz > 0.9 else 0.014, mat, seg=5 if hi else 3)
             if hi:
-                n = int(max(abs(bx - ax), abs(by - ay)) / 0.14)
-                for k in range(n + 1):
-                    t = k / n
-                    m.tube([(ax + (bx - ax) * t, ay + (by - ay) * t, z), (ax + (bx - ax) * t, ay + (by - ay) * t, z + 1.0)], 0.008, mat, seg=4, caps=False)
-        for (yy) in (yc - pw / 2, yc + pw / 2):
-            m.tube([(x0 + pd, yy, z - 0.06), (x0, yy, z - 0.5)], 0.015, mat, seg=4 if hi else 3)                  # brackets back to the wall
-    for i, (z0, z1) in enumerate(zip(z_levels[:-1], z_levels[1:])):                          # steep stairs outside the platforms, alternating direction
-        sg = 1 if i % 2 == 0 else -1
-        ya, yb = yc - sg * pw / 2, yc + sg * pw / 2
-        for xx in (x0 + pd + 0.1, x0 + pd + 0.75):
-            m.tube([(xx, ya, z1 - 0.06), (xx, yb, z0 - 0.06)], 0.02, mat, seg=5 if hi else 3)
-            m.tube([(xx, ya, z1 + 0.95), (xx, yb, z0 + 0.95)], 0.016, mat, seg=4 if hi else 3)
-        if hi:
-            for k in range(11):
-                t = (k + 0.5) / 11
-                yy = ya + (yb - ya) * t
-                zz = z1 - 0.06 + (z0 - z1) * t
-                m.box(x0 + pd + 0.1, yy - 0.12, zz, x0 + pd + 0.75, yy + 0.12, zz + 0.025, mat)
+                L = max(abs(bx - ax), abs(by - ay))
+                nb = int(L / 0.13)
+                for q in range(nb + 1):
+                    t = q / nb
+                    m.tube([(ax + (bx - ax) * t, ay + (by - ay) * t, z), (ax + (bx - ax) * t, ay + (by - ay) * t, z + 1.0)], 0.007, mat, seg=4, caps=False)
+            for (px, py) in ((ax, ay), (bx, by)):
+                m.tube([(px, py, z), (px, py, z + 1.02)], 0.022, mat, seg=5 if hi else 3)
+        # supports: diagonal brackets down to the wall, tie rods up to the wall (bolted), wall plates
+        for s in (-1, 1):
+            yy = yc + s * (pw / 2 - 0.08)
+            m.tube([(x0 + pd - 0.03, yy, z - 0.1), (x0 + 0.02, yy, z - 1.0)], 0.02, mat, seg=5 if hi else 3)
+            m.tube([(x0 + pd - 0.03, yy, z - 0.05), (x0 + 0.02, yy, z + 1.5)], 0.011, mat, seg=4 if hi else 3)           # tie rod to the wall above the deck level
+            m.box(x0, yy - 0.07, z - 1.07, x0 + 0.025, yy + 0.07, z - 0.93, mat)
+            m.box(x0, yy - 0.05, z + 1.43, x0 + 0.025, yy + 0.05, z + 1.57, mat)
+        m.box(x0, yc - pw / 2, z - 0.1, x0 + 0.03, yc + pw / 2, z - 0.05, mat)                                          # wall angle the deck is bolted to
+    # stair flights, inside the platform footprint (x from x0 + 0.25 to x0 + pd - 0.12)
+    for i in range(n - 1):
+        z0, z1 = z_levels[i], z_levels[i + 1]
+        ya, yb = yc - sg[i] * (pw / 2 - 0.05), yc + sg[i] * (pw / 2 - 0.05)
+        xs = (x0 + 0.25, x0 + pd - 0.12)
+        for xx in xs:
+            m.tube([(xx, ya, z1 - 0.07), (xx, yb, z0 - 0.07)], 0.022, mat, seg=5 if hi else 3)                        # stringers
+            m.tube([(xx, ya, z1 + 0.93), (xx, yb, z0 + 0.93)], 0.018, mat, seg=5 if hi else 3)                        # handrails
+            m.tube([(xx, ya, z1 - 0.07), (xx, ya, z1 + 0.93)], 0.018, mat, seg=4 if hi else 3)
+        nt = int((z1 - z0) / 0.2) if hi else int((z1 - z0) / 0.34)
+        for q in range(nt):
+            t = (q + 0.5) / nt
+            yy = ya + (yb - ya) * t
+            zz = z1 - 0.07 + (z0 - z1) * t
+            m.box(xs[0], yy - 0.1 if hi else yy - 0.18, zz, xs[1], yy + 0.1 if hi else yy + 0.18, zz + 0.025, mat)
+        for xx in xs:                                                                                                  # hanger from the flight to the wall
+            m.tube([(xx, (ya + yb) / 2, (z0 + z1) / 2 + 0.5), (x0 + 0.02, (ya + yb) / 2, (z0 + z1) / 2 + 1.2)], 0.01, mat, seg=3, caps=False) if hi and xx > x0 + 0.5 else None
+    # drop ladder from the lowest platform: fixed rails + sliding lower section reaching the walk; hangs outside the front rail, clear of the awning
     z0 = z_levels[0]
-    for yy in (yc - 0.2, yc + 0.2):                                                         # drop ladder from the lowest platform
-        m.tube([(x0 + pd - 0.05, yy, z0 - 0.06), (x0 + pd + 0.3, yy, 2.4)], 0.015, mat, seg=4)
+    oe = open_end(0)
+    yl = yc + (-oe if oe else 1) * (pw / 2 - 0.55)
+    xl = x0 + pd + 0.33
+    mid = z0 - 0.07 - (z0 - ground) * 0.5
+    for dy in (-0.2, 0.2):
+        m.tube([(x0 + pd, yl + dy, z0 - 0.07), (xl, yl + dy, z0 - 0.07)], 0.015, mat, seg=4 if hi else 3)              # arms from the deck to the ladder
+        m.tube([(xl, yl + dy, z0 - 0.07), (xl, yl + dy, mid + 0.25)], 0.017, mat, seg=5 if hi else 3)               # fixed rails
+        m.tube([(xl + 0.04, yl + dy, mid + 0.45), (xl + 0.04, yl + dy, ground)], 0.017, mat, seg=5 if hi else 3)    # sliding rails, outside the fixed ones
+        m.cyl(xl + 0.04, yl + dy, ground - 0.01, ground + 0.03, 0.035, 'steel', seg=6 if hi else 4)                   # shoes on the walk
+        if hi:
+            for zz in (mid + 0.3, mid + 0.4):
+                m.box(xl - 0.02, yl + dy - 0.03, zz, xl + 0.06, yl + dy + 0.03, zz + 0.04, 'steel')                  # guide clips
+    zr = z0 - 0.4
+    while zr > ground + 0.15:
+        xr = xl if zr > mid + 0.35 else xl + 0.04
+        m.tube([(xr, yl - 0.2, zr), (xr, yl + 0.2, zr)], 0.011, mat, seg=4 if hi else 3)
+        zr -= 0.3 if hi else 0.5
     if hi:
-        for k in range(8):
-            z = 2.5 + k * 0.4
-            if z < z0 - 0.1:
-                t = (z - 2.4) / (z0 - 0.06 - 2.4)
-                xx = x0 + pd + 0.3 - 0.35 * t
-                m.tube([(xx, yc - 0.2, z), (xx, yc + 0.2, z)], 0.01, mat, seg=4)
+        m.box(x0 + pd - 0.02, yl - 0.25, z0 - 0.12, x0 + pd + 0.05, yl + 0.25, z0 - 0.07, mat)                      # ladder hatch frame
 
 
 def wall_decor(m, spec, rnd, y0, y1, ztop, D, zf, n):
@@ -476,7 +522,7 @@ def make_building(spec, lod):
         fe_y = rnd.choice([-1, 1]) * (W / 2 - 2.6) if W > 9 else 0.0
         fe_y = (wins[0][0] if wins else 0.0)
         m.at(0.0, 0, 0)
-        fire_escape(m, hi, 0.04, fe_y, [zf[fl] + 0.55 for fl in range(1, n)])
+        fire_escape(m, hi, 0.0, fe_y, [zf[fl] + 0.55 for fl in range(1, n)])
         m.pop()
     # gutters and downspouts
     if hi:

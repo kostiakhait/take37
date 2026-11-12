@@ -18,11 +18,11 @@ import kitlib as K
 # species: trunk, crown ellipsoid (centre height, radii), limb count and angles, leaf card size, leaf mix
 SPECIES = {
     'maple': dict(leaf='leaf_maple', bark='bark', trunk_h=2.8, r0=0.26, c=(0, 0, 6.0), R=(3.2, 3.2, 3.5), limbs=7, limb_ang=(24, 44), up=0.30, droop=0.0,
-                  leader=True, dens=0.85, card=0.72, limb_len=(3.0, 4.2), top=8.8),
+                  leader=True, dens=0.85, card=1.0, limb_len=(3.0, 4.2), top=8.8),
     'elm': dict(leaf='leaf_elm', bark='bark2', trunk_h=3.6, r0=0.24, c=(0, 0, 7.0), R=(3.4, 3.4, 3.6), limbs=5, limb_ang=(14, 28), up=0.40, droop=0.26,
-                leader=False, card=0.68, limb_len=(5.0, 6.0), top=10.6),
+                leader=False, card=0.95, limb_len=(5.0, 6.0), top=10.6),
     'oak': dict(leaf='leaf_oak', bark='bark2', trunk_h=2.3, r0=0.33, c=(0, 0, 5.4), R=(4.2, 4.2, 2.9), limbs=6, limb_ang=(50, 70), up=0.12, droop=0.10,
-                leader=False, card=0.74, limb_len=(4.0, 5.0), top=8.3),
+                leader=False, card=1.0, limb_len=(4.0, 5.0), top=8.3),
 }
 ORDER = [('maple', False), ('elm', False), ('oak', False), ('maple', True), ('elm', True), ('oak', True)]    # StreetTree1..6
 
@@ -71,6 +71,7 @@ class TreeMesh:
     def build(self, collection=None, props=None):
         bm = bmesh.new()
         uvl = bm.loops.layers.uv.new('UVMap')
+        wl = [bm.loops.layers.uv.new(f'WIND{k}') for k in range(4)]        # wind data again as TEXCOORD_1..4: loaders that drop custom attributes (Babylon) still deliver it
         cl = bm.loops.layers.color.new('Color')
         lay = {k: bm.verts.layers.float.new(k) for k in ('_SWAY', '_FLUTTER', '_PHASE', '_BRANCH', '_LEVEL')}
         lpv = bm.verts.layers.float_vector.new('_PIVOT')
@@ -100,6 +101,12 @@ class TreeMesh:
             for lp in f.loops:
                 i = vs.index(lp.vert) if False else lp.vert.index
                 lp[uvl].uv = self.UV[i]
+                q = self.pivot[i]
+                gx, gy, gz = q.x, q.z, -q.y
+                dmaxw = max(self.raw) or 1.0
+                vals = [(min(1.0, self.raw[i] / dmaxw), self.flut[i]), (self.phase[i], float(self.branch[i])), (float(self.level[i]), gx), (gy, gz)]
+                for L_, (u_, v_) in zip(wl, vals):
+                    L_ and lp.__getitem__(L_).__setattr__('uv', (u_, 1.0 - v_))
                 c = self.C[i]
                 lp[cl] = (c[0], c[1], c[2], 1.0)
         me = bpy.data.meshes.new(self.name)
@@ -127,12 +134,21 @@ class Tree:
         self.nb = 0
         sp = self.sp
         self.C = V(sp['c'])
+        self.lump = {'maple': 0.22, 'elm': 0.30, 'oak': 0.30}[species]
+        self.nseed = seed * 1.7
+        self.leafmat = sp['leaf'] + ('_a' if autumn else '')
         self.R = V(sp['R'])
 
     # ------------------------------------------------------------------ envelope
     def env(self, p):
+        """Normalised distance to the crown surface (1 = on it). The surface is lumpy (low-frequency noise by direction): irregular silhouette with bays and lobes."""
         q = (p - self.C)
-        return math.sqrt((q.x / self.R.x) ** 2 + (q.y / self.R.y) ** 2 + (q.z / self.R.z) ** 2)
+        r = math.sqrt((q.x / self.R.x) ** 2 + (q.y / self.R.y) ** 2 + (q.z / self.R.z) ** 2)
+        if r < 1e-6:
+            return 0.0
+        d = V((q.x, q.y, q.z * 1.3)).normalized()
+        lump = 1.0 + self.lump * (2.0 * K.fbm(d * 1.6 + V((self.nseed, 0, 0)), 3, 1.0) - 1.0) * 1.6
+        return r / max(0.5, lump)
 
     def outward(self, p):
         q = p - self.C
@@ -337,73 +353,80 @@ class Tree:
                 tm.face([rings[-1][k], rings[-1][k + 1], tip], sp['bark'])
 
     def emit_leaves(self, per_cluster, size_mul, rect_pool):
+        """Sprig cards (leaf_<species> atlases, a fan of twigs with ~30 small leaves each) anchored on the cluster points. The card's base sits on the branch tip, its up axis follows the
+        branch direction blended with outward and up, so the foliage grows out of the wood. One colour per tree; tone only by tier (height) and by depth in the crown."""
         tm, sp, rnd = self.tm, self.sp, self.rnd
-        dmax_branch = max(b['cum'][-1] for b in self.branches)
-        for ci, cl in enumerate(self.clusters):
+        for cl in self.clusters:
             b, j = cl['b'], cl['j']
             P = cl['p']
             raw = b['cum'][j]
             ph = rnd.random()
+            pts = b['pts']
+            bdir = (pts[min(len(pts) - 1, j)] - pts[max(0, j - 1)]).normalized()
             for _ in range(per_cluster):
-                out = self.outward(P)
-                rc = 0.75 * cl['sz']
-                ctr = P + out * 0.15 + V((rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(-0.7, 0.7))) * rc
-                # keep cards inside a shell of the envelope so that the crown keeps its shape
-                e = self.env(ctr)
-                if e > 1.08:
-                    ctr = self.C + (ctr - self.C) / e * 1.08
-                radial = (ctr - self.C).normalized() if (ctr - self.C).length > 1e-6 else V((0, 0, 1))
-                nrm = (radial * 1.0 + V((rnd.gauss(0, 0.38), rnd.gauss(0, 0.38), rnd.gauss(0, 0.3)))).normalized()
-                if sp['droop'] > 0.2 and rnd.random() < 0.5:
-                    nrm = (nrm + V((0, 0, -0.5))).normalized()
-                ref = V((0, 0, 1)) if abs(nrm.z) < 0.9 else V((1, 0, 0))
-                uax = nrm.cross(ref).normalized()
-                vax = nrm.cross(uax)
-                ang = rnd.uniform(0, 6.28)
-                uax, vax = uax * math.cos(ang) + vax * math.sin(ang), vax * math.cos(ang) - uax * math.sin(ang)
-                s = sp['card'] * size_mul * rnd.uniform(0.8, 1.2) * cl['sz'] ** 0.4 * 0.5
+                base = P + V((rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(-0.6, 0.6))) * 0.45 * cl['sz']
+                e = self.env(base)
+                if e > 1.05:
+                    base = self.C + (base - self.C) / e * 1.05
+                radial = (base - self.C).normalized() if (base - self.C).length > 1e-6 else V((0, 0, 1))
+                up = (radial * 0.75 + bdir * 0.5 + V((rnd.gauss(0, 0.45), rnd.gauss(0, 0.45), rnd.gauss(0, 0.35))) + V((0, 0, 0.25 - sp['droop']))).normalized()
+                face = radial.cross(up)
+                if face.length < 1e-3:
+                    face = V((1, 0, 0))
+                face = face.normalized().cross(up).normalized()
+                if face.dot(radial) < 0:
+                    face = -face
+                uax = up.cross(face).normalized()
+                s = sp['card'] * size_mul * rnd.uniform(0.85, 1.2) * cl['sz'] ** 0.3
                 rect = rect_pool[rnd.randrange(len(rect_pool))]
-                # shade: darker deep inside the crown, lighter on top and outside
-                depth = min(1.0, (ctr - self.C).length / max(self.R.x, 1e-3))
-                topl = max(-0.3, min(0.3, (ctr.z - self.C.z) / self.R.z * 0.3))
-                tone = (0.62 + 0.55 * depth ** 0.8 + topl) * rnd.uniform(0.9, 1.08)
-                hue = rnd.uniform(0.94, 1.06)
-                col = (tone * hue, tone, tone * 2 - tone * hue if False else tone * (2 - hue) * 0.98)
-                shade_n = (radial * 0.85 + nrm * 0.15)
-                corners = [(-1, -1), (1, -1), (1, 1), (-1, 1)]
+                depth = min(1.0, (base - self.C).length / max(self.R.x, 1e-3))
+                tier = max(0.0, min(1.0, (base.z - (self.C.z - self.R.z)) / (2 * self.R.z)))
+                tone = (0.56 + 0.26 * depth ** 0.9 + 0.12 * tier) * rnd.uniform(0.96, 1.04)
+                col = (tone, tone * rnd.uniform(0.99, 1.01), tone * 0.97)
+                shade_n = (radial * 0.6 + face * 0.4).normalized()
+                corners = [(-1, 0), (1, 0), (1, 1), (-1, 1)]
                 uvs = [(rect[0], rect[1]), (rect[2], rect[1]), (rect[2], rect[3]), (rect[0], rect[3])]
-                if uax.cross(vax).dot(shade_n) < 0:                      # winding: the geometric normal agrees with the outward shading normal
-                    corners = [(-1, -1), (-1, 1), (1, 1), (1, -1)]
+                if uax.cross(up).dot(face) < 0:
+                    corners = [(-1, 0), (-1, 1), (1, 1), (1, 0)]
                     uvs = [(rect[0], rect[1]), (rect[0], rect[3]), (rect[2], rect[3]), (rect[2], rect[1])]
                 ids = []
                 for (cx, cy), uv in zip(corners, uvs):
-                    pos = ctr + uax * (cx * s) + vax * (cy * s)
-                    # flutter is 0.3 at the middle, 1 at the rim of the card; sway follows the twig the cluster hangs on
-                    fl = 0.3 + 0.7 * min(1.0, ((pos - ctr).length / (s * 1.414)))
+                    pos = base + uax * (cx * s * 0.5) + up * (cy * s) - up * s * 0.06
+                    fl = 0.25 + 0.75 * min(1.0, (pos - base).length / (s * 1.1))
                     ids.append(tm.vert(pos, uv, col, shade_n, raw + (pos - P).length * 0.5, fl, ph, b['id'], 4, P))
-                tm.face(ids, sp['leaf'])
+                tm.face(ids, self.leafmat)
 
     def emit_core(self, n, size_mul, pool):
-        """Dark inner cards near the middle of the crown: gaps between the outer clusters show shaded foliage, not the sky."""
+        """Darker inner sprigs near the middle of the crown: the gaps between outer sprigs show shaded foliage and the wood, not just sky."""
         tm, sp, rnd = self.tm, self.sp, self.rnd
         for _ in range(n):
             a = rnd.uniform(0, 6.28)
-            rr = rnd.uniform(0.15, 0.62)
-            ctr = self.C + V((math.cos(a) * self.R.x * rr, math.sin(a) * self.R.y * rr, rnd.uniform(-0.6, 0.7) * self.R.z))
-            radial = (ctr - self.C).normalized() if (ctr - self.C).length > 1e-6 else V((0, 0, 1))
-            nrm = (radial + V((rnd.gauss(0, 0.6), rnd.gauss(0, 0.6), rnd.gauss(0, 0.6)))).normalized()
-            ref = V((0, 0, 1)) if abs(nrm.z) < 0.9 else V((1, 0, 0))
-            u = nrm.cross(ref).normalized()
-            v = nrm.cross(u)
-            s = sp['card'] * size_mul * rnd.uniform(1.1, 1.5) * 0.5
+            rr = rnd.uniform(0.2, 0.7)
+            ctr = self.C + V((math.cos(a) * self.R.x * rr, math.sin(a) * self.R.y * rr, rnd.uniform(-0.5, 0.6) * self.R.z))
+            if self.env(ctr) > 0.95:
+                continue
+            radial = (ctr - self.C).normalized()
+            up = (radial + V((rnd.gauss(0, 0.6), rnd.gauss(0, 0.6), rnd.gauss(0, 0.6)))).normalized()
+            face = radial.cross(up)
+            face = (face.normalized() if face.length > 1e-3 else V((1, 0, 0))).cross(up).normalized()
+            if face.dot(radial) < 0:
+                face = -face
+            uax = up.cross(face).normalized()
+            s = sp['card'] * size_mul * rnd.uniform(1.0, 1.4)
             rect = pool[rnd.randrange(len(pool))]
-            tone = rnd.uniform(0.36, 0.5)
-            col = (tone, tone, tone * 0.9)
+            tone = rnd.uniform(0.38, 0.5)
+            col = (tone, tone, tone * 0.97)
+            corners = [(-1, 0), (1, 0), (1, 1), (-1, 1)]
+            uvs = [(rect[0], rect[1]), (rect[2], rect[1]), (rect[2], rect[3]), (rect[0], rect[3])]
+            if uax.cross(up).dot(face) < 0:
+                corners = [(-1, 0), (-1, 1), (1, 1), (1, 0)]
+                uvs = [(rect[0], rect[1]), (rect[0], rect[3]), (rect[2], rect[3]), (rect[2], rect[1])]
+            ph = rnd.random()
             ids = []
-            for (cx, cy), uv in zip([(-1, -1), (1, -1), (1, 1), (-1, 1)], [(rect[0], rect[1]), (rect[2], rect[1]), (rect[2], rect[3]), (rect[0], rect[3])]):
-                pos = ctr + u * (cx * s) + v * (cy * s)
-                ids.append(tm.vert(pos, uv, col, radial, 0.0 + 0.5 * (pos.z / 10.0) * 10.0, 0.4, rnd.random(), 0, 4, ctr))
-            tm.face(ids, sp['leaf'])
+            for (cx, cy), uv in zip(corners, uvs):
+                pos = ctr + uax * (cx * s * 0.5) + up * (cy * s)
+                ids.append(tm.vert(pos, uv, col, radial, 0.6 * pos.z, 0.4, ph, 0, 4, ctr))
+            tm.face(ids, self.leafmat)
 
     def pit(self):
         tm = self.tm
@@ -424,16 +447,11 @@ def build_tree(lod, tree_no):
     T.make_tree()
     T.pit()
     sp = T.sp
-    rects = [(0.0 + 0.004, 0.5 + 0.004, 0.5 - 0.004, 1.0 - 0.004), (0.5 + 0.004, 0.5 + 0.004, 1.0 - 0.004, 1.0 - 0.004),
-             (0.004, 0.004, 0.5 - 0.004, 0.5 - 0.004), (0.5 + 0.004, 0.004, 1.0 - 0.004, 0.5 - 0.004)]       # atlas cells: green, yellow-green, gold, red  (v up: row 0 is the top)
-    if autumn:
-        pool = [rects[2], rects[2], rects[3], rects[3], rects[1], rects[0], rects[2], rects[3]]
-    else:
-        pool = [rects[0], rects[0], rects[1], rects[0], rects[1], rects[1], rects[0], rects[2]]
+    pool = [(0.004, 0.504, 0.496, 0.996), (0.504, 0.504, 0.996, 0.996), (0.004, 0.004, 0.496, 0.496), (0.504, 0.004, 0.996, 0.496)]     # the four sprig variants of the atlas
     T.emit_wood(3 if lod == 0 else 2)
-    per, mul = (7, 1.0) if lod == 0 else (3, 1.9)
+    per, mul = (6, 1.0) if lod == 0 else (3, 1.7)
     T.emit_leaves(per, mul, pool)
-    T.emit_core(60 if lod == 0 else 22, mul, pool)
+    T.emit_core(140 if lod == 0 else 40, mul, pool)
     name = f'StreetTree{tree_no}_LOD{lod}'
     T.tm.name = name
     nw = sum(len(i) - 2 for i, mm in T.tm.F if mm in ('bark', 'bark2'))
