@@ -115,3 +115,5 @@ All vessels from the library (заимствовано из Феррета). Lib
 Score: mostly ships destroyed (yachts and boats count; destroyers count for fires and explosions staged on them), less for "killed" henchmen.
 
 Henchmen "die" both ways: shot ones fall (onto the deck or overboard); blasts throw them as ragdolls. They stand on decks on engine Walkers physics (ferret-physics-walkers), so decks that tilt or sink carry or drop them correctly.
+
+Henchmen shoot at Matthew without doing damage (they knock him back at most). Destroyers fire their guns, anti-aircraft guns fire at aircraft, aircraft raid the roadstead: the whole entourage of the Dunkirk sample is reproduced as the set of scene 2 (2 km beach with the crowd, the mole on piles, wrecked lorries and guns, AA sites, litter, dunes, tide and surf, wakes, weather ladder, air war with Hurricane, Spitfire, Ju 87, He 111, Do 17, Bf 109). All of it is borrowed from the sample and the library ("заимствовано из Феррета"); what is changed (the villain's base on the shore, cages on the pier, fleet, shooting scenario) is logged as modification.
