@@ -14,7 +14,7 @@ import { bullHead, growFur } from 'file:///D:/REPO/ferret/tools/humans/mh/bull.m
 const RED = { root: [0.16, 0.035, 0.012], tip: [0.36, 0.1, 0.03] }
 const BR = (c, t, w = 0.0001) => ({ root: c, tip: t, w, seg: 4 })
 const SPECS = {
-  matthew: { export: 'T37_Matthew', scalp: [0.12, 0.03, 0.01], clothing: 'matthew', grooms: [
+  matthew: { export: 'Orlando', scalp: [0.12, 0.03, 0.01], clothing: 'matthew', grooms: [
     { g: 'Hair__Hair_M_Layered', ...RED },
     { g: 'Eyebrows__Eyebrows_M_Natural', ...BR([0.14, 0.03, 0.01], [0.26, 0.07, 0.02]) }] },
   edward: { export: 'T37_Edward', scalp: [0.02, 0.015, 0.01], clothing: 'edward', grooms: [
@@ -28,10 +28,10 @@ const SPECS = {
     { g: 'Beards__Beard_L_Messy', root: [0.33, 0.32, 0.3], tip: [0.62, 0.6, 0.57], w: 0.00017, extend: 0.1 },
     { g: 'Eyebrows__Eyebrows_L_Scraggly', root: [0.42, 0.4, 0.37], tip: [0.65, 0.63, 0.6], w: 0.0001, seg: 4 }] },
 }
-SPECS.arnold = { export: process.env.ARNOLD ?? 'T37_Arnold', scalp: [0.05, 0.04, 0.03], clothing: 'arnold', grooms: [
+SPECS.arnold = { export: 'Victor', scalp: [0.05, 0.04, 0.03], clothing: 'arnold', grooms: [
   { g: 'Hair__Hair_S_SlickBack', root: [0.04, 0.03, 0.02], tip: [0.1, 0.075, 0.05] },
   { g: 'Eyebrows__Eyebrows_M_SlightArch', ...BR([0.04, 0.03, 0.02], [0.08, 0.06, 0.04]) }] }
-SPECS.director = { export: process.env.DIRECTOR ?? 'T37_Director', scalp: [0.1, 0.08, 0.06], clothing: 'director', grooms: [
+SPECS.director = { export: 'Bruce', scalp: [0.1, 0.08, 0.06], clothing: 'director', grooms: [
   { g: 'Hair__Hair_L_MessyClumps', root: [0.07, 0.05, 0.035], tip: [0.2, 0.15, 0.1] },
   { g: 'Beards__Beard_L_Messy', root: [0.08, 0.06, 0.04], tip: [0.22, 0.17, 0.12], w: 0.00017, extend: 0.07 },
   { g: 'Mustaches__Mustache_L_Messy', root: [0.08, 0.06, 0.04], tip: [0.2, 0.15, 0.1], w: 0.00016, seg: 6 },
@@ -39,7 +39,7 @@ SPECS.director = { export: process.env.DIRECTOR ?? 'T37_Director', scalp: [0.1, 
 const [who = 'girl', out = `D:/temp/take37/chars/${who}.glb`] = process.argv.slice(2)
 // TIER=full (the look renders), desktop (library: LOD1, every 2nd strand, wider) or low (LOD3, every 8th strand, half the segments)
 const TIER = { full: { lod: 0, step: 1, wk: 1, segk: 1, tex: 0 }, desktop: { lod: 1, step: 2, wk: 1.4, segk: 1, tex: 2048 }, low: { lod: 3, step: 8, wk: 2.6, segk: 0.5, tex: 512 } }[process.env.TIER ?? 'full']
-const S = SPECS[who], DIR = `D:/temp/mh/export/${S.export}_DCC/${S.export}`, TEX = `D:/temp/mh/export/${S.export}_TEX`
+const S = SPECS[who] ?? (who.startsWith('bare_') ? { export: who.slice(5), grooms: [] } : who.startsWith('hair_') ? { export: who.split('_')[1], scalp: [0.02, 0.015, 0.01], grooms: [{ g: 'Hair__' + who.split('_').slice(2).join('_'), root: [0.016, 0.012, 0.008], tip: [0.03, 0.022, 0.015], jitter: 0.15 }] } : undefined), DIR = `D:/temp/mh/export/${S.export}_DCC/${S.export}`, TEX = `D:/temp/mh/export/${S.export}_TEX`
 const dna = readDna(fs.readFileSync(`${DIR}/head.dna`)), body = readDna(fs.readFileSync(`${DIR}/body.dna`))
 const hm = dna.meshes.find((x) => x.name === 'head_lod0_mesh'), eye = dna.meshes.find((x) => x.name === 'eyeLeft_lod0_mesh')
 const gdy = eye.positions.ys.reduce((a, b) => a + b, 0) / eye.positions.ys.length / 100 - 1.6822 + 0.18

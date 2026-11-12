@@ -10,7 +10,7 @@ function outfit(parts, extra = {}) {
 }
 export const OUTFITS = {
   // Matthew: T-shirt, jeans, boots
-  matthew: outfit([['trousers', { seatEase: 0.1, waistEase: 0.04, hem: 0.46 }, 'denim', 0x1c3a66], ['tshirt', { neckline: 'crew' }, 'jersey knit', 0xd8d8d2]], { boots: { shaft: 0.12, eyelets: 6 } }),
+  matthew: outfit([['trousers', { seatEase: 0.1, waistEase: 0.04, hem: 0.46 }, 'denim', 0x1c3a66], ['tshirt', { neckline: 'crew', length: 'hip' }, 'jersey knit', 0xd8d8d2]], { boots: { shaft: 0.12, eyelets: 6 } }),
   // Arnold: double-breasted suit, white shirt
   arnold: outfit([['trousers', { seatEase: 0.12, waistEase: 0.03, rise: 0.03, hem: 0.5 }, 'flannel', 0x3a3e4c], ['shirt', { collar: 'shirt', closure: 'single', sleeve: 'set-in' }, 'cotton shirting', 0xf0eee8],
     ['jacket', { buttonRows: 2, lapel: 0.09 }, 'wool serge', 0x3c4152]], { boots: { shaft: 0.07, eyelets: 0 } }),
@@ -21,7 +21,7 @@ export const OUTFITS = {
   // Vincent: hooded robe to the ankle
   vincent: outfit([['hoodie', { length: 'calf', ease: 0.3, sleeve: 'drop', hood: { up: true, deeper: 0.08 } }, 'wool serge', 0x34323f]]),
   // Edward: oversized hoodie and wide trousers
-  edward: outfit([['trousers', { seatEase: 0.4, waistEase: 0.06, knee: 0.7, hem: 0.62 }, 'canvas', 0x5a6030], ['tshirt', { length: 'thigh', ease: 0.34, sleeve: 'drop', neckline: 'crew' }, 'jersey knit', 0xc8a020]], { boots: { shaft: 0.1, eyelets: 6 } }),
+  edward: outfit([['trousers', { seatEase: 0.4, waistEase: 0.06, knee: 0.7, hem: 0.62 }, 'canvas', 0x5a6030], ['tshirt', { length: 'hip', ease: 0.34, sleeve: 'drop', neckline: 'crew' }, 'jersey knit', 0xc8a020]], { boots: { shaft: 0.1, eyelets: 6 } }),
   // Director: corduroy trousers, shirt, vest
   director: outfit([['trousers', { seatEase: 0.12 }, 'corduroy', 0x5a4a30], ['shirt', { collar: 'shirt', closure: 'single', sleeve: 'set-in' }, 'cotton shirting', 0xb8ae88], ['waistcoat', {}, 'canvas', 0x6a6040]], { boots: { shaft: 0.1, eyelets: 6 } }),
 }
