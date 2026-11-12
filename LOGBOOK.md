@@ -48,3 +48,4 @@ Every operation made to create the game: local time and description.
 | 2026-11-12 08:56 | Scene 2 take end: both cages on the steamer, the AI takes the steamer away from the pier, the director shouts, the scene is shot. |
 | 2026-11-12 08:58 | Scene 2 spoiled-take rules: Matthew cannot be killed; falling off the mole, a cage lost in the water, or the time limit running out spoil the take (owner's decision). |
 | 2026-11-12 08:59 | Scene 2: falling off the mole ends the take at once (owner's decision); first-run time limit proposed: 3 minutes. |
+| 2026-11-12 08:59 | Scene 2: unlimited ammunition for the submachine gun and the bazooka for now (owner's decision, time is short). |
