@@ -73,6 +73,7 @@ async function main() {
   // ---- the game ----
   const view = new GameView(scene, camera, propNodes, stationNodes, set.shadow);
   view.setInfos(infos);
+  view.usePerspective(set.game.world);   // far cars by @ferret/perspective (the world's frame runs its service)
   const total = kinds.length;
   await view.loadModels(kinds, (i, n, what) => splash.set(0.72 + 0.26 * i / n, 'Cars: ' + what));
   const mem = new Map<string, string>();

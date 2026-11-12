@@ -377,11 +377,15 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
   // ---- each frame ----
   let lastLook = 0;
   const settleOnce = (frames: number) => new Promise<void>((res) => { let n = 0; const o = scene.onAfterRenderObservable.add(() => { if (++n >= frames) { scene.onAfterRenderObservable.remove(o); res(); } }); });
-  let frame = 0, lodAt = 0, terrainAt = -1; let terrainPos: [number, number, number] = [1e9, 0, 0];
+  let frame = 0, lodAt = 0, terrainAt = -1, terrainPending = 1, scatterAt = -1, scatterTurn = 0; let terrainPos: [number, number, number] = [1e9, 0, 0];
   scene.onBeforeRenderObservable.add(() => {
     const dt = Math.min(0.1, engine.getDeltaTime() / 1000), t = world.time, c = camera.globalPosition, cp: [number, number, number] = [c.x, c.y, c.z];
     const tm = <R,>(_k: string, f: () => R): R => f();
-    if (t - terrainAt > 0.25 || Math.hypot(cp[0] - terrainPos[0], cp[1] - terrainPos[1], cp[2] - terrainPos[2]) > 2) { terrainAt = t; terrainPos = cp; tm('terrain', () => terrain.update(cp)); } tm('oaks', () => oaks.update(cp)); tm('bushes', () => bushes.update(cp)); tm('stones', () => stones.update(cp)); if (++frame % 3 === 0) tm('grass', () => grass.update());   // the wave texture is solved on the CPU: a third of the frames are enough for a wave that slow tm('clouds', () => clouds.update(cp, t));
+    // the land and the scattered plants are planned by time and by distance, not by frame: one plan of the land costs tens of milliseconds even when nothing is left to build
+    const moved = Math.hypot(cp[0] - terrainPos[0], cp[1] - terrainPos[1], cp[2] - terrainPos[2]);
+    if (moved > 6 || (terrainPending > 0 && t - terrainAt > 0.4) || t - terrainAt > 3) { terrainAt = t; terrainPos = cp; terrainPending = tm('terrain', () => terrain.update(cp)).pending; }
+    else if (t - scatterAt > 0.3) { scatterAt = t; const k = scatterTurn++ % 3; if (k === 0) tm('oaks', () => oaks.update(cp)); else if (k === 1) tm('bushes', () => bushes.update(cp)); else tm('stones', () => stones.update(cp)); }   // one of them per turn, never in the frame of the land
+    if (++frame % 3 === 0) tm('grass', () => grass.update());   // the wave texture is solved on the CPU: a third of the frames are enough for a wave that slow
     if (t - lastLook > 0.5) { lastLook = t; tm('look', applyLook); }
     if (t - lodAt > 0.2) { lodAt = t; tm('lod', lodUpdate); }
     tm('flags', () => { for (const f of flags) f.update(dt); });
@@ -413,7 +417,8 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
       return { chunks: s.chunks, triangles: s.triangles, levels: JSON.stringify(s.levels), oaks: oaks.count(), surround: surround.count, pinned: pins.built + '/' + pins.total + ' ' + pins.ms + 'ms', bushes: bushes.count(), stones: stones.count(), grass: grass.drawn, litter: litter.airborne, sway: sway.materials, bakedTrees: scene.meshes.filter(m => m.isVerticesDataPresent(BABYLON.VertexBuffer.UV5Kind)).length, mergeFailed, merged: cells.length + castable.length, meshes: scene.meshes.length, active: scene.getActiveMeshes().length, fps: Math.round(engine.getFps()) };
     },
   };
-  scene.onBeforeRenderObservable.add(() => { if (!warmed && started) { if (pins.warm(5)) warmed = true; const c0 = camera.globalPosition; terrain.update([c0.x, c0.y, c0.z]); } });   // the view of the camera is put back at once
+  // once the game runs, the land of the other places is not built ahead any more: one call builds up to three chunks and costs far more than its slice, every frame (the frames fell to a few a second);
+  // what the loading built stays, the rest comes with the camera's own plan
   progress(0.9, 'Terrain');
   { const v0 = views().cab; aim(camera, v0.position, v0.target, v0.fov); }
   void WEATHER; void power;

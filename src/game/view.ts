@@ -12,6 +12,8 @@ import type { Take } from './take';
 import { POLICE_CAB } from './carspec';
 import type { Car, Debris, SimEvent, Prop } from './sim';
 import type { NodeInfo } from '@ferret/destruction/autoparts';
+import { BabylonBackend, Perspective, PerspectiveService, type PerspectiveLevel } from '@ferret/perspective';
+import type { Entity, World } from '@ferret/core';
 
 type V3 = [number, number, number];
 const split = (url: string) => { const i = url.lastIndexOf('/'); return [url.slice(0, i + 1), url.slice(i + 1)] as const; };
@@ -21,7 +23,11 @@ interface Pack { full?: BABYLON.AssetContainer; lod?: BABYLON.AssetContainer; da
 interface WheelVis { node: BABYLON.TransformNode; mesh: BABYLON.TransformNode | null; restN: BABYLON.Quaternion; restM: BABYLON.Quaternion; steer: boolean; angle: number }
 interface Look { root: BABYLON.TransformNode; nodes: Map<string, BABYLON.TransformNode>; wheels: Map<string, WheelVis> }
 interface DentVis { cage: DentCage; sum: number }
-interface CarVis { dents: Map<string, DentVis>; frameNo: number; car: Car; root: BABYLON.TransformNode; full: Look | null; lod: Look | null; dam: Look | null; hidden: Set<string>; shown: 0 | 1; near: boolean; infoByName: Map<string, NodeInfo>; spin: Map<string, number> }
+interface CarVis { dents: Map<string, DentVis>; frameNo: number; car: Car; root: BABYLON.TransformNode; full: Look | null; lod: Look | null; dam: Look | null; hidden: Set<string>; shown: 0 | 1; near: boolean; infoByName: Map<string, NodeInfo>; spin: Map<string, number>; entity: Entity | null; reduced: BABYLON.InstancedMesh[] }
+/** the rungs of a far car by its size on the screen (pixels of the bounding sphere): its own parts, the kind's reduced model, a point */
+const CAR_LADDER: PerspectiveLevel[] = [{ kind: 'full', minPx: 300 }, { kind: 'mesh', minPx: 4 }, { kind: 'point', minPx: 0 }];
+/** a standing car (parked, the tanker): its own parts and the merged model are the same geometry, so its parts are made only when it is touched */
+const STILL_LADDER: PerspectiveLevel[] = [{ kind: 'mesh', minPx: 4 }, { kind: 'point', minPx: 0 }];
 
 export interface ViewCamera { mode: 'cab' | 'set'; set?: SetCamera }
 
@@ -50,7 +56,7 @@ export class GameView {
   constructor(readonly scene: BABYLON.Scene, readonly camera: BABYLON.UniversalCamera, private propNodes: Map<string, BABYLON.TransformNode>, private stationNodes: Map<string, BABYLON.TransformNode>, shadow: BABYLON.ShadowGenerator | null = null) {
     this.vfx.registerAll(FULL_CATALOG as never);
     this.fx = new FxDirector(this.vfx);
-    this.vfxView = new VfxBabylonView(scene, this.vfx, camera, { soft: true, supports: ['particles', 'impostor', 'dot'], parts: { maxLights: 6, groundHeight: () => 0, candelaScale: 1 / 40000, maxLightIntensity: 0.55 } } as never);
+    this.vfxView = new VfxBabylonView(scene, this.vfx, camera, { soft: false /* soft particles need a depth pass of the whole scene every frame (about a second a frame here) */, supports: ['particles', 'impostor', 'dot'], parts: { maxLights: 6, groundHeight: () => 0, candelaScale: 1 / 40000, maxLightIntensity: 0.55 } } as never);
     const hemi = scene.lights.find((l) => l instanceof BABYLON.HemisphericLight) as BABYLON.HemisphericLight | undefined;
     if (hemi) { this.skyLight = hemi; this.skyBase = hemi.intensity; this.skyColor = hemi.diffuse.clone(); }
     // the effects' lights (up to six) must reach the street's materials: the default of a material is four lights in all
@@ -97,16 +103,76 @@ export class GameView {
 
   private makeCar(car: Car): CarVis {
     const root = new BABYLON.TransformNode('car:' + car.id, this.scene), pack = this.packs.get(car.kind) ?? {};
-    const full = this.instantiate(pack.full, root), lod = pack.lod ? this.instantiate(pack.lod, root) : null;
-    const infoByName = new Map((this.infos[car.kind] ?? []).map((n) => [n.name, n] as const));
-    const vis: CarVis = { car, root, full, lod, dam: null, hidden: new Set(), shown: 0, near: true, infoByName, spin: new Map(), dents: new Map(), frameNo: 0 };
     root.rotationQuaternion = BABYLON.Quaternion.Identity();
+    const infoByName = new Map((this.infos[car.kind] ?? []).map((n) => [n.name, n] as const));
+    // the player's car and Vincent's are always the full model; every other car is drawn by the engine's perspective module while nobody has touched it
+    const ladderd = !!this.persp && car.role !== 'player' && car.role !== 'vincent' && !!this.reducedOf(car.kind);
+    const own = car.role === 'player' ? pack.full : pack.lod ?? pack.full;   // every car but the player's is drawn from its reduced file (same parts, a quarter of the triangles)
+    const full = ladderd && car.role !== 'traffic' ? null : this.instantiate(own, root), lod = car.role === 'player' && pack.lod ? this.instantiate(pack.lod, root) : null;
+    const vis: CarVis = { car, root, full, lod, dam: null, hidden: new Set(), shown: 0, near: true, infoByName, spin: new Map(), dents: new Map(), frameNo: 0, entity: null, reduced: [] };
+    if (ladderd) this.ladder(vis);
     return vis;
+  }
+
+  // ---- far cars through @ferret/perspective: the full model near (made when first needed), the kind's reduced model (merged, an instance per car) farther, a point far ----
+  private persp: { service: PerspectiveService; backend: BabylonBackend; world: World } | null = null;
+  /** the world whose frame runs the perspective service (play.ts gives it once); without it every car is drawn in full */
+  usePerspective(world: World) {
+    const service = world.hasService('perspective') ? world.service<PerspectiveService>('perspective') : world.addService(new PerspectiveService({ backend: new BabylonBackend(this.scene), budget: { maxFull: 10 } }));
+    this.persp = { service, backend: service.backend as BabylonBackend, world };
+  }
+  private reduced = new Map<KindId, { meshes: BABYLON.Mesh[]; radius: number } | null>();
+  /** the kind's reduced model (its *_lod1, cut to a quarter of the triangles by the build) as merged meshes in the car's frame: one per set of vertex attributes, a material per part kept */
+  private reducedOf(kind: KindId): { meshes: BABYLON.Mesh[]; radius: number } | null {
+    if (this.reduced.has(kind)) return this.reduced.get(kind)!;
+    const pack = this.packs.get(kind), src = pack?.lod ?? pack?.full;
+    if (!src) { this.reduced.set(kind, null); return null; }
+    const inst = src.instantiateModelsToScene((n) => 'reduced-src:' + n, false, { doNotInstantiate: true });
+    const root = inst.rootNodes[0] as BABYLON.TransformNode;
+    upright(root); root.position.setAll(0); root.computeWorldMatrix(true);
+    const groups = new Map<string, BABYLON.Mesh[]>();
+    for (const m of root.getChildMeshes(false)) {
+      if (!(m instanceof BABYLON.Mesh) || !m.material || m.getTotalVertices() === 0) continue;
+      m.makeGeometryUnique(); m.setParent(null); m.bakeCurrentTransformIntoVertices();
+      const sig = (m.getVerticesDataKinds() ?? []).slice().sort().join(',');
+      (groups.get(sig) ?? groups.set(sig, []).get(sig)!).push(m);
+    }
+    root.dispose(false, false);
+    const meshes: BABYLON.Mesh[] = []; let radius = 0;
+    for (const list of groups.values()) {
+      let out: BABYLON.Mesh[] = list;
+      try { const merged = BABYLON.Mesh.MergeMeshes(list, true, true, undefined, false, true); if (merged) out = [merged]; } catch { out = list; }
+      for (const m of out) {
+        m.name = `reduced:${kind}`; m.isPickable = false; m.receiveShadows = true;
+        m.refreshBoundingInfo(); const bs = m.getBoundingInfo().boundingSphere; radius = Math.max(radius, bs.radius + bs.center.length());
+        m.position.y = -10000;   // kept enabled (the instances draw from it) but out of sight, far under the ground
+        meshes.push(m);
+      }
+    }
+    const r = { meshes, radius }; this.reduced.set(kind, r); return r;
+  }
+  private ladder(vis: CarVis) {
+    const P = this.persp!, red = this.reducedOf(vis.car.kind)!, pack = this.packs.get(vis.car.kind) ?? {};
+    vis.reduced = red.meshes.map((m) => { const i = m.createInstance(`car-reduced:${vis.car.id}`); i.parent = vis.root; i.position.setAll(0); i.isPickable = false; this.shadow?.addShadowCaster(i, false); return i; });
+    vis.root.computeWorldMatrix(true);
+    const e = P.world.spawn('car-' + vis.car.id, { node: vis.root, tags: ['car'] });
+    if (vis.full) P.backend.represent(e, 'full', vis.full.root);
+    void pack;
+    P.backend.represent(e, 'mesh', vis.reduced);
+    e.add(Perspective, { ladder: vis.full ? CAR_LADDER : STILL_LADDER, radius: red.radius, color: [0.18, 0.18, 0.19], fade: 0 });   // switched at once: the dithered cross-fade compiles a shader variant of every material of the car the first time, a stall while driving
+    vis.entity = e;
+  }
+  /** a touched car leaves the module for good: its own parts from now on (the dents and the parts that come off need them) */
+  private unladder(vis: CarVis) {
+    vis.entity?.destroy(); vis.entity = null;
+    for (const i of vis.reduced) i.dispose(); vis.reduced = [];
+    if (!vis.full) { const pk = this.packs.get(vis.car.kind); vis.full = this.instantiate(pk?.lod ?? pk?.full, vis.root); }
+    if (vis.full) { vis.full.root.setEnabled(true); for (const m of vis.full.root.getChildMeshes(false)) m.isVisible = true; }
   }
 
   /** a new take: the old cars and effects go, the new sim's cars appear */
   startTake(take: Take) {
-    for (const v of this.cars.values()) v.root.dispose();
+    for (const v of this.cars.values()) { v.entity?.destroy(); v.root.dispose(); }
     this.cars.clear();
     for (const d of this.debris.values()) d.dispose();
     this.debris.clear();
@@ -118,6 +184,21 @@ export class GameView {
     this.unlisten = ds.listen((name, p) => { if (name === 'destruction:hit') this.addShards(ds, p); });
     for (const car of take.scene.sim.cars) this.cars.set(car.id, this.makeCar(car));
     this.lookYaw = this.lookPitch = 0; this.camInit = false;
+    if (!this.culled) { this.culled = true; this.cullSmall(); }
+  }
+
+  /** small static things (the pumps' nozzles and hoses, bins, news boxes, signs, lamps) are not drawn where they are under about three pixels: a draw call each costs the frame far more than they show */
+  private culled = false;
+  private cullSmall() {
+    const k = 900 / (2 * Math.tan(this.camera.fov / 2)) / 3;   // the distance at which one metre of size is three pixels high
+    for (const m of this.scene.meshes) {
+      if (!(m instanceof BABYLON.Mesh) || m.hasThinInstances || m.skeleton || m.getTotalVertices() === 0) continue;
+      let r: BABYLON.Node | null = m; while (r?.parent) r = r.parent;
+      if (/^(car:|reduced|terrain|skydome|scatter|merged|surround)/.test(r?.name ?? '') || /^(reduced|merged)/.test(m.name)) continue;
+      const size = m.getBoundingInfo().boundingSphere.radiusWorld * 2;
+      if (size <= 0 || size > 4) continue;
+      m.addLODLevel(Math.max(60, size * k), null);
+    }
   }
 
   // ---- the frame ----
@@ -152,6 +233,12 @@ export class GameView {
     vis.root.position.set(p[0], p[1], p[2]);
     (vis.root.rotationQuaternion as BABYLON.Quaternion).set(q[0], q[1], q[2], q[3]);
     const d = Math.hypot(p[0] - cam.x, p[2] - cam.z);
+    // a car under the perspective module: the module shows its rung; once touched it leaves the module and is drawn below like the player's
+    if (vis.entity) {
+      const intact = !(c.hitAt > -90 || c.damage > 0 || c.wrecked || c.shown !== 0 || v.bodies.length > 0);
+      if (intact) return;
+      this.unladder(vis);
+    }
     const wantDam = c.shown === 1 && !!this.packs.get(c.kind)?.damaged;
     if (wantDam && !vis.dam) { vis.dam = this.instantiate(this.packs.get(c.kind)!.damaged, vis.root); }
     const useFull = d < 110 || c.role === 'player' || !vis.lod;

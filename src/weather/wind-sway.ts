@@ -44,7 +44,7 @@ export class WindField {
     this.u.dirX = dx; this.u.dirZ = dz; this.u.speed = s.wind; this.u.time = t;
     // the window follows the camera in steps of a few cells, so the texture is rewritten at about 10 Hz and the gusts read the same wherever the camera is
     const ox = Math.round(p.x / (this.cell * 8)) * this.cell * 8, oz = Math.round(p.z / (this.cell * 8)) * this.cell * 8;
-    if (t - this.last < 0.1 && ox === this.u.ox && oz === this.u.oz) return;
+    if (t - this.last < 0.2 && ox === this.u.ox && oz === this.u.oz) return;
     this.last = t; this.u.ox = ox; this.u.oz = oz;
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
       const x = ox + (i + 0.5 - N / 2) * this.cell, z = oz + (j + 0.5 - N / 2) * this.cell;

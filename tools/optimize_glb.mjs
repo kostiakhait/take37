@@ -22,8 +22,10 @@ const extSrc = fs.readFileSync(extDist, 'utf8')
   .replace('if (refKey === "TEXCOORD_0") return { filter: "NONE" };', 'if (refKey === "TEXCOORD_0") return { filter: "EXPONENTIAL", bits: ' + +(process.env.UBITS ?? 18) + ' };');
 fs.mkdirSync('D:/temp/take37', { recursive: true }); fs.writeFileSync('D:/temp/take37/gt-ext.cjs', extSrc);
 const { EXTMeshoptCompression, EXTTextureWebP, ALL_EXTENSIONS } = createRequire(import.meta.url)('D:/temp/take37/gt-ext.cjs');
-const { reorder, quantize, textureCompress } = require('@gltf-transform/functions');
-const { MeshoptEncoder, MeshoptDecoder } = require('meshoptimizer');
+const { reorder, quantize, textureCompress, weld, simplify } = require('@gltf-transform/functions');
+const { MeshoptEncoder, MeshoptDecoder, MeshoptSimplifier } = require('meshoptimizer');
+// the reduced copy of a vehicle (*_lod1.glb) is what a car far away is drawn with, by the dozen: its triangles are cut to about a quarter (the source files keep theirs)
+const LOD1_RATIO = +(process.env.LOD1_RATIO ?? 0.25), isLod1 = (f) => /_lod1\.glb$/.test(f);
 const sharp = require('sharp');
 
 const outDir = process.argv[2]; const force = process.argv.includes('--force');
@@ -41,6 +43,7 @@ for (const src of files) {
   if (!force && fs.existsSync(dst) && fs.statSync(dst).mtimeMs >= fs.statSync(src).mtimeMs && fs.statSync(dst).mtimeMs >= fs.statSync(fileURLToPath(import.meta.url)).mtimeMs) { after += fs.statSync(dst).size; kept++; continue; }
   const t0 = Date.now(), doc = await io.read(src);
   doc.createExtension(EXTTextureWebP).setRequired(false);
+  if (isLod1(src)) { await MeshoptSimplifier.ready; await doc.transform(weld(), simplify({ simplifier: MeshoptSimplifier, ratio: LOD1_RATIO, error: 0.004 })); }
   await doc.transform(
     textureCompress({ encoder: sharp, targetFormat: 'webp', quality: +(process.env.WQ ?? 84), resize: undefined, slots: /^(?!normalTexture$)/ }),
     textureCompress({ encoder: sharp, targetFormat: 'webp', quality: 92, slots: /normalTexture$/ }),
