@@ -25,27 +25,11 @@ const win = window as unknown as Record<string, unknown>;
 
 async function bytes(url: string): Promise<ArrayBuffer> { const r = await fetch(url); if (!r.ok) throw new Error(url + ' ' + r.status); return r.arrayBuffer(); }
 
-/**
- * The set's own loader reads the street and a light gas station. Two things are adjusted from outside, without touching it: the light station is not loaded (the game's full one stands in its place), and the
- * street's destructible props are kept out of the merge by the set (they are renamed under a node the set leaves alone) so that the game can move them.
- */
-function prepareLoader(propNodes: Map<string, BABYLON.TransformNode>) {
-  const orig = BABYLON.SceneLoader.ImportMeshAsync.bind(BABYLON.SceneLoader) as (...a: unknown[]) => Promise<BABYLON.ISceneLoaderAsyncResult>;
-  (BABYLON.SceneLoader as unknown as { ImportMeshAsync: unknown }).ImportMeshAsync = async (...a: unknown[]) => {
-    const file = String(a[2] ?? '');
-    if (/gas_station_lite/.test(file)) return { meshes: [], particleSystems: [], skeletons: [], animationGroups: [], transformNodes: [], geometries: [], lights: [], spriteManagers: [] } as unknown as BABYLON.ISceneLoaderAsyncResult;
-    const r = await orig(...a);
-    if (/street_level/.test(file)) for (const n of r.transformNodes) if (/^DEST_[A-Za-z]+_\d+$/.test(n.name)) { propNodes.set(n.name, n); n.name = 'StreetTree_' + n.name; }
-    return r;
-  };
-}
-
 async function main() {
   $('splashver').textContent = (globalThis as { __TAKE37_BUILD__?: string }).__TAKE37_BUILD__ ?? '';
-  const propNodes = new Map<string, BABYLON.TransformNode>(), stationNodes = new Map<string, BABYLON.TransformNode>();
-  prepareLoader(propNodes);
-  const set = await buildSet($('c') as HTMLCanvasElement, q, (p, t) => splash.set(p * 0.6, t));
-  const { scene, camera } = set;
+  const stationNodes = new Map<string, BABYLON.TransformNode>();
+  const set = await buildSet($('c') as HTMLCanvasElement, q, (p, t) => splash.set(p * 0.6, t), { gas: 'none', keepProps: true });
+  const { scene, camera, propNodes } = set;
   camera.detachControl();
 
   // ---- the art's data: layout of the street and the station, the nodes of every car ----
@@ -64,13 +48,12 @@ async function main() {
   const gas = await BABYLON.SceneLoader.ImportMeshAsync('', '/art/gas-station/', 'gas_station.glb', scene);
   const groot = gas.meshes[0]!.parent ?? gas.meshes[0]!; (groot as BABYLON.TransformNode).rotationQuaternion = BABYLON.Quaternion.Identity(); groot.parent = anchor;
   for (const m of gas.meshes.slice()) if (/^COL_/.test(m.name)) m.dispose();
-  const sun = scene.getLightByName('sun') as BABYLON.DirectionalLight | null;
-  for (const m of gas.meshes) if (!m.isDisposed()) { m.isPickable = false; m.receiveShadows = true; if (m.getTotalVertices() > 0) sun?.getShadowGenerator()?.addShadowCaster(m, false); }
+    for (const m of gas.meshes) if (!m.isDisposed()) { m.isPickable = false; m.receiveShadows = true; if (m.getTotalVertices() > 0) set.shadow?.addShadowCaster(m, false); }
   for (const n of gas.transformNodes) stationNodes.set(n.name, n);
   for (const m of gas.meshes) stationNodes.set(m.name, m as unknown as BABYLON.TransformNode);
 
   // ---- the game ----
-  const view = new GameView(scene, camera, propNodes, stationNodes);
+  const view = new GameView(scene, camera, propNodes, stationNodes, set.shadow);
   view.setInfos(infos);
   const total = kinds.length;
   await view.loadModels(kinds, (i, n, what) => splash.set(0.72 + 0.26 * i / n, 'Cars: ' + what));

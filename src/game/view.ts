@@ -3,6 +3,7 @@
 // VIEW FILE: it reads the sim and never writes to it.
 import { VfxSystem, VfxBabylonView, FULL_CATALOG } from '@ferret/vfx';
 import { qRot } from '@ferret/destruction/vehicle';
+import { DentCage } from '@ferret/destruction/view-dents';
 import { CAR_KINDS, SET_CAMERAS, type KindId, type SetCamera } from './config';
 import type { Take } from './take';
 import type { Car, Debris, SimEvent, Prop } from './sim';
@@ -15,7 +16,8 @@ const upright = (root: BABYLON.TransformNode | BABYLON.AbstractMesh | null | und
 interface Pack { full?: BABYLON.AssetContainer; lod?: BABYLON.AssetContainer; damaged?: BABYLON.AssetContainer }
 interface WheelVis { node: BABYLON.TransformNode; mesh: BABYLON.TransformNode | null; restN: BABYLON.Quaternion; restM: BABYLON.Quaternion; steer: boolean; angle: number }
 interface Look { root: BABYLON.TransformNode; nodes: Map<string, BABYLON.TransformNode>; wheels: Map<string, WheelVis> }
-interface CarVis { car: Car; root: BABYLON.TransformNode; full: Look | null; lod: Look | null; dam: Look | null; hidden: Set<string>; shown: 0 | 1; near: boolean; infoByName: Map<string, NodeInfo>; spin: Map<string, number> }
+interface DentVis { cage: DentCage; sum: number }
+interface CarVis { dents: Map<string, DentVis>; frameNo: number; car: Car; root: BABYLON.TransformNode; full: Look | null; lod: Look | null; dam: Look | null; hidden: Set<string>; shown: 0 | 1; near: boolean; infoByName: Map<string, NodeInfo>; spin: Map<string, number> }
 interface Flame { handle: { id: number }; heat: number; kind: string }
 
 export interface ViewCamera { mode: 'cab' | 'set'; set?: SetCamera }
@@ -29,7 +31,7 @@ export class GameView {
   private props = new Map<string, { node: BABYLON.TransformNode; w0: BABYLON.Matrix; moved: boolean }>();
   private flames = new Map<string, Flame>();
   private infos: Partial<Record<KindId, NodeInfo[]>> = {};
-  private sun: BABYLON.DirectionalLight | null;
+  private shadow: BABYLON.ShadowGenerator | null;
   private lookYaw = 0; private lookPitch = 0; private back = 0;
   private camQ = BABYLON.Quaternion.Identity(); private camInit = false;
   private metal: BABYLON.PBRMaterial; private cloth: BABYLON.PBRMaterial;
@@ -37,11 +39,11 @@ export class GameView {
   view: ViewCamera = { mode: 'cab' };
   private shake = 0;
 
-  constructor(readonly scene: BABYLON.Scene, readonly camera: BABYLON.UniversalCamera, private propNodes: Map<string, BABYLON.TransformNode>, private stationNodes: Map<string, BABYLON.TransformNode>) {
+  constructor(readonly scene: BABYLON.Scene, readonly camera: BABYLON.UniversalCamera, private propNodes: Map<string, BABYLON.TransformNode>, private stationNodes: Map<string, BABYLON.TransformNode>, shadow: BABYLON.ShadowGenerator | null = null) {
     this.vfx.registerAll(FULL_CATALOG as never);
     this.vfx.host = { groundHeight: () => 0 } as never;
     this.vfxView = new VfxBabylonView(scene, this.vfx, camera, { soft: true, supports: ['particles', 'impostor', 'dot'] } as never);
-    this.sun = scene.getLightByName('sun') as BABYLON.DirectionalLight | null;
+    this.shadow = shadow;
     this.metal = new BABYLON.PBRMaterial('debris-metal', scene); this.metal.albedoColor = new BABYLON.Color3(0.16, 0.16, 0.17); this.metal.metallic = 0.7; this.metal.roughness = 0.55;
     this.cloth = new BABYLON.PBRMaterial('debris-cloth', scene); this.cloth.albedoColor = new BABYLON.Color3(0.12, 0.2, 0.42); this.cloth.metallic = 0; this.cloth.roughness = 0.9;
   }
@@ -62,7 +64,7 @@ export class GameView {
 
   private instantiate(c: BABYLON.AssetContainer | undefined, parent: BABYLON.TransformNode): Look | null {
     if (!c) return null;
-    const inst = c.instantiateModelsToScene((n) => n, false, { doNotInstantiate: false });
+    const inst = c.instantiateModelsToScene((n) => n, false, { doNotInstantiate: true });
     const root = inst.rootNodes[0] as BABYLON.TransformNode; if (!root) return null;
     upright(root); root.parent = parent;
     const nodes = new Map<string, BABYLON.TransformNode>(), wheels = new Map<string, WheelVis>();
@@ -73,7 +75,7 @@ export class GameView {
       wheels.set(name, { node: n, mesh, restN: (n.rotationQuaternion ?? BABYLON.Quaternion.Identity()).clone(), restM: mesh ? (mesh.rotationQuaternion ?? BABYLON.Quaternion.Identity()).clone() : BABYLON.Quaternion.Identity(), steer: /^Wheel_F/.test(name), angle: 0 });
       n.rotationQuaternion = wheels.get(name)!.restN.clone(); if (mesh) mesh.rotationQuaternion = wheels.get(name)!.restM.clone();
     }
-    for (const mesh of root.getChildMeshes()) { mesh.isPickable = false; mesh.receiveShadows = true; mesh.alwaysSelectAsActiveMesh = false; this.sun?.getShadowGenerator()?.addShadowCaster(mesh, false); }
+    for (const mesh of root.getChildMeshes()) { mesh.isPickable = false; mesh.receiveShadows = true; mesh.alwaysSelectAsActiveMesh = false; this.shadow?.addShadowCaster(mesh, false); }
     return { root, nodes, wheels };
   }
 
@@ -81,7 +83,7 @@ export class GameView {
     const root = new BABYLON.TransformNode('car:' + car.id, this.scene), pack = this.packs.get(car.kind) ?? {};
     const full = this.instantiate(pack.full, root), lod = pack.lod ? this.instantiate(pack.lod, root) : null;
     const infoByName = new Map((this.infos[car.kind] ?? []).map((n) => [n.name, n] as const));
-    const vis: CarVis = { car, root, full, lod, dam: null, hidden: new Set(), shown: 0, near: true, infoByName, spin: new Map() };
+    const vis: CarVis = { car, root, full, lod, dam: null, hidden: new Set(), shown: 0, near: true, infoByName, spin: new Map(), dents: new Map(), frameNo: 0 };
     root.rotationQuaternion = BABYLON.Quaternion.Identity();
     return vis;
   }
@@ -139,8 +141,38 @@ export class GameView {
       vw.node.rotationQuaternion = sq.multiply(vw.restN);
       if (vw.mesh) vw.mesh.rotationQuaternion = BABYLON.Quaternion.RotationAxis(BABYLON.Axis.Z, vw.angle).multiply(vw.restM);
     }
+    if (d < 120 && ((vis.frameNo++ + vis.car.id.length) % 6 === 0)) this.dent(vis, look);
     // parts that have come off
     for (const b of v.bodies) { if (vis.hidden.has(b.id)) continue; vis.hidden.add(b.id); for (const l of [vis.full, vis.lod, vis.dam]) { const n = l?.nodes.get(b.id); if (n) n.setEnabled(false); if (b.id.startsWith('Door_')) { const s = l?.nodes.get(b.id + '_shell'); if (s) s.setEnabled(false); } } }
+  }
+
+  /** the dents of the parts' meshes: the part's lattice (the engine's `dents`, offsets in the game frame) applied to the vertices of the part's own mesh through the engine's cage; the file's z is mirrored, so the lattice is mirrored too */
+  private dent(vis: CarVis, look: Look) {
+    const asm = vis.car.veh.assembly;
+    for (const [id, ap] of asm.parts) {
+      const lat = ap.part.dents; if (!lat) continue;
+      let sum = 0; for (let i = 0; i < lat.length; i++) sum += Math.abs(lat[i]!);
+      const meshes = this.partMeshes(look, id); if (!meshes.length) continue;
+      const out = new Float32Array(lat.length), [nx, ny, nz] = [5, 3, 3];
+      for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const a = ((k * ny + j) * nx + i) * 3, b = (((nz - 1 - k) * ny + j) * nx + i) * 3; out[b] = lat[a]!; out[b + 1] = lat[a + 1]!; out[b + 2] = -lat[a + 2]!; }
+      for (const m of meshes) {
+        const key = (look === vis.dam ? 'd:' : look === vis.lod ? 'l:' : 'f:') + id + ':' + m.uniqueId, have = vis.dents.get(key);
+        if (have && Math.abs(have.sum - sum) < 1e-4) continue;
+        let cage = have?.cage;
+        if (!cage) {
+          m.makeGeometryUnique(); m.refreshBoundingInfo(true);
+          const bb = m.getBoundingInfo().boundingBox, mn = bb.minimum, mx = bb.maximum;
+          cage = new DentCage(m as never, { size: [Math.max(0.05, mx.x - mn.x), Math.max(0.05, mx.y - mn.y), Math.max(0.05, mx.z - mn.z)], center: [(mn.x + mx.x) / 2, (mn.y + mx.y) / 2, (mn.z + mx.z) / 2] });
+        }
+        cage.apply(out); vis.dents.set(key, { cage, sum });
+      }
+    }
+  }
+  /** the one drawn mesh of a part (a node by its name: the first mesh under it); parts that are only meshes of the body are not dented */
+  private partMeshes(look: Look, id: string): BABYLON.Mesh[] {
+    const n = look.nodes.get(id); if (!n) return [];
+    const own = n instanceof BABYLON.Mesh && n.getTotalVertices() > 0 ? [n] : [];
+    return [...own, ...n.getChildMeshes(true).filter((m): m is BABYLON.Mesh => m instanceof BABYLON.Mesh && m.getTotalVertices() > 0 && !/Glass/.test(m.name))];
   }
 
   // ---- debris: parts of cars, props flying, the jumper, fragments ----
@@ -165,11 +197,11 @@ export class GameView {
       const info = vis!.infoByName.get(d.node!), c = info ? [(info.min[0] + info.max[0]) / 2, (info.min[1] + info.max[1]) / 2, (info.min[2] + info.max[2]) / 2] : [0, 0, 0];
       const mirror = new BABYLON.TransformNode('m', this.scene); mirror.parent = pivot; mirror.scaling.set(1, 1, -1); mirror.position.set(-c[0]!, -c[1]!, -c[2]!);
       const copy = src.clone('copy', null, false)!; copy.parent = mirror; copy.setEnabled(true);
-      for (const m of copy.getChildMeshes()) { m.isPickable = false; this.sun?.getShadowGenerator()?.addShadowCaster(m, false); }
+      for (const m of copy.getChildMeshes()) { m.isPickable = false; this.shadow?.addShadowCaster(m, false); }
       return pivot;
     }
     const m = BABYLON.MeshBuilder.CreateBox('piece' + d.id, { width: d.half[0] * 2, height: d.half[1] * 2, depth: d.half[2] * 2 }, this.scene);
-    m.material = d.kind === 'matthew' ? this.cloth : this.metal; m.isPickable = false; m.parent = pivot; this.sun?.getShadowGenerator()?.addShadowCaster(m, false);
+    m.material = d.kind === 'matthew' ? this.cloth : this.metal; m.isPickable = false; m.parent = pivot; this.shadow?.addShadowCaster(m, false);
     return pivot;
   }
   private captureProp(id: string) {

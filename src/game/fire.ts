@@ -155,9 +155,9 @@ export class FireWorld {
       for (const f of burning) { if (f === t) continue; q += this.flux(f.at(), f.power, at); }
       if (t.wall) { t.wall.power = Math.min(q, ENGULF_FLUX) * t.exposed; }
       if (!t.burning) {
+        const doseLimit = t.what === 'pump' ? 40e3 : CAR_IGNITE_FLUX, doseTime = t.what === 'pump' ? 3 : CAR_IGNITE_TIME, doses = t.what === 'car' || t.what === 'canopy' || t.what === 'pump';
         if (t.leaking && q > IGNITE_FLUX) this.ignite(t, this.chainDepth(burning) + 1);
-        else if ((t.what === 'car' || t.what === 'canopy') && q > CAR_IGNITE_FLUX) { t.dose += dt; if (t.dose > CAR_IGNITE_TIME) this.ignite(t, this.chainDepth(burning) + 1); } else t.dose = Math.max(0, t.dose - dt);
-        if (t.what === 'pump' && q > 40e3) { t.dose += dt; if (t.dose > 3) { t.leaking = true; this.ignite(t, this.chainDepth(burning) + 1); } }
+        else if (doses && q > doseLimit) { t.dose += dt; if (t.dose > doseTime) { if (t.what === 'pump') t.leaking = true; this.ignite(t, this.chainDepth(burning) + 1); } } else t.dose = Math.max(0, t.dose - dt);
         if (t.what === 'car' && q > 60e3) t.leaking = true;
       }
     }

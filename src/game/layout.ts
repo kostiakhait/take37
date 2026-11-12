@@ -45,6 +45,9 @@ function baseBox(b: Box, kind: string): Box {
   return out;
 }
 
+/** the station is moved along the street so that its 68.5 m lot sits in the 67 m gap between the two buildings (centre of the gap): the overlap with each is 0.75 m of empty apron instead of 2.5 m on one side */
+export const STATION_SHIFT_X = 2.5;
+
 export function readLayout(street: GLtf, colliders: GLtf, gas: GLtf): Layout {
   // colliders: the buildings (walls the cars hit); the sidewalks are ground
   const cb = nodeBounds(colliders);
@@ -68,7 +71,7 @@ export function readLayout(street: GLtf, colliders: GLtf, gas: GLtf): Layout {
   const gb = nodeBounds(gas), parts: StationPart[] = [], fireAnchors: V3[] = [], fireNodes: { id: string; at: V3 }[] = [];
   // the station lies BEHIND the sidewalk on the player's side: the file's +x (street edge to the shop) runs away from the road, which the anchor's own rotation does not do, so the game turns it (render in MOCKUPS.md)
   const a0 = anchorM ?? [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 562, 0, 9.3, 1];
-  const am = [0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, a0[12]!, a0[13]!, a0[14]!, 1];
+  const am = [0, 0, 1, 0, 0, 1, 0, 0, -1, 0, 0, 0, a0[12]! + STATION_SHIFT_X, a0[13]!, a0[14]!, 1];
   let lot: Box = { min: [528, 0, -50], max: [596, 10, 0] };
   gas.nodes.forEach((n, i) => {
     const nm = n.name ?? '', ex = (n.extras ?? {}) as Record<string, unknown>;

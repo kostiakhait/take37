@@ -30,8 +30,8 @@ export function pursue(c: Car, tx: number, tz: number, speed: number, brakeFirst
 
 /** keep a lane at a speed along +x: the lane error asks for a small heading (a few degrees), the steering follows the heading; stable at speed (a cascade, no long look-ahead) */
 export function holdLane(c: Car, laneZ: number, speed: number): void {
-  const h = headingOf(c), v = speedOf(c), hDes = clamp((laneZ - c.veh.pos[2]) * 0.07, -0.11, 0.11);
-  const gain = 1.2 * 25 / Math.max(v, 10);
+  const h = headingOf(c), v = speedOf(c), hDes = clamp((laneZ - c.veh.pos[2]) * 0.6 / Math.max(v, 8), -0.1, 0.1);
+  const gain = 2.0 * 25 / Math.max(v, 10);
   c.ctl.steer += clamp(clamp(gain * (hDes - h), -1, 1) - c.ctl.steer, -0.08, 0.08);
   const e = speed - v;
   if (e >= 0) { c.ctl.throttle = clamp(e * 0.6, 0, 1); c.ctl.brake = 0; } else { c.ctl.throttle = 0; c.ctl.brake = clamp(-e * 0.25, 0, 1); }

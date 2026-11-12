@@ -14,7 +14,7 @@ const { build } = require('esbuild');
 const pkgs = fs.readdirSync(path.join(FERRET, 'packages')).filter((p) => fs.existsSync(path.join(FERRET, 'packages', p, 'src', 'index.ts')));
 const alias = Object.fromEntries(pkgs.map((p) => [`@ferret/${p}`, path.join(FERRET, 'packages', p, 'src', 'index.ts')]));
 // the destruction module's road-vehicle files are imported by subpath (they are not in its index)
-for (const f of ['vehicle', 'autoparts', 'crush', 'glass', 'assembly', 'part', 'types']) alias[`@ferret/destruction/${f}`] = path.join(FERRET, 'packages', 'destruction', 'src', `${f}.ts`);
+for (const f of ['vehicle', 'autoparts', 'crush', 'glass', 'assembly', 'part', 'types', 'view-dents']) alias[`@ferret/destruction/${f}`] = path.join(FERRET, 'packages', 'destruction', 'src', `${f}.ts`);
 const p2 = (n) => String(n).padStart(2, '0'), d = new Date();
 const stamp = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}${p2(d.getHours())}${p2(d.getMinutes())}`;      // the machine's local time
 
