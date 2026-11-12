@@ -9,6 +9,7 @@ import { readDna } from 'file:///D:/REPO/ferret/tools/humans/mh/dna.mjs'
 import { readStrands, ribbons, bindToHead } from 'file:///D:/REPO/ferret/tools/humans/mh/strands.mjs'
 import { scalpTint, scalpMatte } from 'file:///D:/REPO/ferret/tools/humans/mh/groom.mjs'
 import { robe, belt, hat, fabric, bodyRegions, mantle } from 'file:///D:/REPO/ferret/tools/humans/mh/garment.mjs'
+import { dreadlocks } from './dreads.mjs'
 import { bullHead, growFur } from 'file:///D:/REPO/ferret/tools/humans/mh/bull.mjs'
 
 const RED = { root: [0.16, 0.035, 0.012], tip: [0.36, 0.1, 0.03] }
@@ -18,9 +19,9 @@ const SPECS = {
     { g: 'Hair__Hair_M_Layered', ...RED },
     { g: 'Eyebrows__Eyebrows_M_Natural', ...BR([0.14, 0.03, 0.01], [0.26, 0.07, 0.02]) }] },
   edward: { export: 'T37_Edward', scalp: [0.02, 0.015, 0.01], clothing: 'edward', grooms: [
-    { g: 'Hair__Hair_M_TwistedBraids', root: [0.016, 0.012, 0.008], tip: [0.03, 0.022, 0.015], jitter: 0.15 },
+    { g: 'Hair__Hair_L_Straight', root: [0.012, 0.009, 0.006], tip: [0.022, 0.016, 0.011], jitter: 0.12, step: 1, w: 0.0004, seg: 14, dread: { cell: 0.026, radius: 0.0055, turns: 7 } },
     { g: 'Eyebrows__Eyebrows_M_Full', ...BR([0.02, 0.014, 0.01], [0.04, 0.03, 0.02]) }] },
-  emily: { export: 'Girl', scalp: [0.35, 0.26, 0.1], clothing: process.env.DRESS ?? 'emilyA', grooms: [
+  emily: { export: 'T37_EmilyM', scalp: [0.35, 0.26, 0.1], clothing: process.env.DRESS ?? 'emilyA', grooms: [
     { g: 'Hair__Hair_L_Straight', root: [0.3, 0.2, 0.07], tip: [0.62, 0.48, 0.2] },
     { g: 'Eyebrows__Eyebrows_M_SlightArch', ...BR([0.2, 0.13, 0.05], [0.3, 0.21, 0.09]) }] },
   vincent: { export: 'Walter', scalp: [0.3, 0.29, 0.27], clothing: 'vincent', grooms: [
@@ -39,7 +40,7 @@ SPECS.director = { export: 'Bruce', scalp: [0.1, 0.08, 0.06], clothing: 'directo
 const [who = 'girl', out = `D:/temp/take37/chars/${who}.glb`] = process.argv.slice(2)
 // TIER=full (the look renders), desktop (library: LOD1, every 2nd strand, wider) or low (LOD3, every 8th strand, half the segments)
 const TIER = { full: { lod: 0, step: 1, wk: 1, segk: 1, tex: 0 }, desktop: { lod: 1, step: 2, wk: 1.4, segk: 1, tex: 2048 }, low: { lod: 3, step: 8, wk: 2.6, segk: 0.5, tex: 512 } }[process.env.TIER ?? 'full']
-const S = SPECS[who] ?? (who.startsWith('bare_') ? { export: who.slice(5), grooms: [] } : who.startsWith('hair_') ? { export: who.split('_')[1], scalp: [0.02, 0.015, 0.01], grooms: [{ g: 'Hair__' + who.split('_').slice(2).join('_'), root: [0.016, 0.012, 0.008], tip: [0.03, 0.022, 0.015], jitter: 0.15 }] } : undefined), DIR = `D:/temp/mh/export/${S.export}_DCC/${S.export}`, TEX = `D:/temp/mh/export/${S.export}_TEX`
+const S = SPECS[who] ?? (who.startsWith('bare_') ? { export: who.slice(5), grooms: [] } : who.startsWith('hair_') ? { export: who.split('_')[1], scalp: [0.02, 0.015, 0.01], grooms: [{ g: 'Hair__' + who.split('_').slice(2).join('_'), root: [0.012, 0.009, 0.006], tip: [0.022, 0.016, 0.011], jitter: 0.12, step: 1, w: 0.0004, seg: 14, dread: { cell: 0.026, radius: 0.0055, turns: 7 } }] } : undefined), DIR = `D:/temp/mh/export/${S.export}_DCC/${S.export}`, TEX = `D:/temp/mh/export/${S.export}_TEX`
 const dna = readDna(fs.readFileSync(`${DIR}/head.dna`)), body = readDna(fs.readFileSync(`${DIR}/body.dna`))
 const hm = dna.meshes.find((x) => x.name === 'head_lod0_mesh'), eye = dna.meshes.find((x) => x.name === 'eyeLeft_lod0_mesh')
 const gdy = eye.positions.ys.reduce((a, b) => a + b, 0) / eye.positions.ys.length / 100 - 1.6822 + 0.18
@@ -53,6 +54,7 @@ for (const G of S.grooms) {
       if (k0 > 0) for (let k = 1; k < c; k++) { const t = k / (c - 1), i = (off + k) * 3; st.pos[i + 1] -= G.extend * k0 * t ** 1.3; st.pos[i + 2] += 0.035 * k0 * t ** 2 }
       off += c }
   }
+  if (G.dread) { const d = dreadlocks(st, G.dread); Object.assign(st, d); console.log('dreadlocks:', d.nS, 'strands in locks') }
   console.log(G.g, st.nS, 'strands, bound', b.meanMoveMm.toFixed(1), 'mm, miss', b.miss)
   if (G.g.startsWith('Hair__')) hairPts = st.pos
 }
