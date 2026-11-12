@@ -2,6 +2,7 @@
 // The picture of scene 1: the sim's cars, props and debris drawn with the art's models in the Babylon scene of the set; fire, smoke and blasts from the engine's vfx; the first-person camera of the police cab and the set cameras.
 // VIEW FILE: it reads the sim and never writes to it.
 import { VfxSystem, VfxBabylonView, FULL_CATALOG } from '@ferret/vfx';
+import { FxDirector } from './fx';
 import { qRot } from '@ferret/destruction/vehicle';
 import { DentCage } from '@ferret/destruction/view-dents';
 import { ShardView, type MeshData, type ShardHost } from '@ferret/destruction/view-shards';
@@ -20,18 +21,18 @@ interface WheelVis { node: BABYLON.TransformNode; mesh: BABYLON.TransformNode | 
 interface Look { root: BABYLON.TransformNode; nodes: Map<string, BABYLON.TransformNode>; wheels: Map<string, WheelVis> }
 interface DentVis { cage: DentCage; sum: number }
 interface CarVis { dents: Map<string, DentVis>; frameNo: number; car: Car; root: BABYLON.TransformNode; full: Look | null; lod: Look | null; dam: Look | null; hidden: Set<string>; shown: 0 | 1; near: boolean; infoByName: Map<string, NodeInfo>; spin: Map<string, number> }
-interface Flame { handle: { id: number }; heat: number; kind: string }
 
 export interface ViewCamera { mode: 'cab' | 'set'; set?: SetCamera }
 
 export class GameView {
   readonly vfx = new VfxSystem();
+  readonly fx: FxDirector;
+  private skyLight: BABYLON.HemisphericLight | null = null; private skyBase = 1; private flashing = false; private skyColor = BABYLON.Color3.White();
   private vfxView!: VfxBabylonView;
   private packs = new Map<KindId, Pack>();
   private cars = new Map<string, CarVis>();
   private debris = new Map<number, BABYLON.TransformNode | BABYLON.Mesh>();
   private props = new Map<string, { node: BABYLON.TransformNode; w0: BABYLON.Matrix; moved: boolean }>();
-  private flames = new Map<string, Flame>();
   private infos: Partial<Record<KindId, NodeInfo[]>> = {};
   private shadow: BABYLON.ShadowGenerator | null;
   private lookYaw = 0; private lookPitch = 0; private back = 0;
@@ -44,12 +45,16 @@ export class GameView {
   private pieceMats = new Map<string, BABYLON.Material>();
   shardStats = { sets: 0, pieces: 0, prototypes: 0 };
   view: ViewCamera = { mode: 'cab' };
-  private shake = 0;
 
   constructor(readonly scene: BABYLON.Scene, readonly camera: BABYLON.UniversalCamera, private propNodes: Map<string, BABYLON.TransformNode>, private stationNodes: Map<string, BABYLON.TransformNode>, shadow: BABYLON.ShadowGenerator | null = null) {
     this.vfx.registerAll(FULL_CATALOG as never);
-    this.vfx.host = { groundHeight: () => 0 } as never;
-    this.vfxView = new VfxBabylonView(scene, this.vfx, camera, { soft: true, supports: ['particles', 'impostor', 'dot'] } as never);
+    this.fx = new FxDirector(this.vfx);
+    this.vfxView = new VfxBabylonView(scene, this.vfx, camera, { soft: true, supports: ['particles', 'impostor', 'dot'], parts: { maxLights: 6, groundHeight: () => 0, candelaScale: 1 / 9000, maxLightIntensity: 3.2 } } as never);
+    const hemi = scene.lights.find((l) => l instanceof BABYLON.HemisphericLight) as BABYLON.HemisphericLight | undefined;
+    if (hemi) { this.skyLight = hemi; this.skyBase = hemi.intensity; this.skyColor = hemi.diffuse.clone(); }
+    // the effects' lights (up to six) must reach the street's materials: the default of a material is four lights in all
+    const lights = (m: BABYLON.Material) => { const a = m as unknown as { maxSimultaneousLights?: number }; if (typeof a.maxSimultaneousLights === 'number' && a.maxSimultaneousLights < 8) a.maxSimultaneousLights = 8; };
+    scene.materials.forEach(lights); scene.onNewMaterialAddedObservable.add(lights);
     this.shadow = shadow;
     this.metal = new BABYLON.PBRMaterial('debris-metal', scene); this.metal.albedoColor = new BABYLON.Color3(0.16, 0.16, 0.17); this.metal.metallic = 0.7; this.metal.roughness = 0.55;
     this.cloth = new BABYLON.PBRMaterial('debris-cloth', scene); this.cloth.albedoColor = new BABYLON.Color3(0.12, 0.2, 0.42); this.cloth.metallic = 0; this.cloth.roughness = 0.9;
@@ -105,8 +110,7 @@ export class GameView {
     for (const d of this.debris.values()) d.dispose();
     this.debris.clear();
     for (const [, p] of this.props) { p.node.unfreezeWorldMatrix(); p.node.setEnabled(true); if (p.moved) { p.node.freezeWorldMatrix(p.w0); } p.moved = false; }
-    for (const f of this.flames.values()) this.vfx.stop(f.handle as never);
-    this.flames.clear();
+    this.fx.reset();
     for (const sh of this.shards) sh.view.dispose();
     this.shards = []; this.unlisten?.();
     const ds = take.scene.sim.ds;
@@ -125,14 +129,22 @@ export class GameView {
     this.debrisFrame(sim.debris);
     this.shardFrame(sim.ds, dt);
     this.propsFrame(take);
-    this.flameFrame(take);
+    this.fx.frame(take, dt, [cam.x, cam.y, cam.z]);
     // camera
     this.placeCamera(take, dt, head);
+    const t0 = performance.now();
     this.vfxView.draw({ cameraPosition: [cam.x, cam.y, cam.z], fov: this.camera.fov, heightPx: this.scene.getEngine().getRenderHeight(), tier: 'high', dt, night: 0 } as never);
+    this.fx.endFrame(performance.now() - t0);
+    // the warm flash of a blast lights the whole street for a moment (the sky light, warmer and brighter)
+    if (this.skyLight) {
+      const f = this.fx.flashLevel(dt), L = this.skyLight;
+      if (f > 0.002) { if (!this.flashing) { this.flashing = true; this.skyBase = L.intensity; this.skyColor.copyFrom(L.diffuse); } L.intensity = this.skyBase * (1 + f * 0.7); BABYLON.Color3.LerpToRef(this.skyColor, new BABYLON.Color3(1, 0.62, 0.34), Math.min(0.5, f * 0.8), L.diffuse); }
+      else if (this.flashing) { this.flashing = false; L.intensity = this.skyBase; L.diffuse.copyFrom(this.skyColor); }
+    }
   }
   push(evs: SimEvent[]) { for (const e of evs) this.eventQueue.push(e); }
   /** fixed steps of the effects (the caller runs this once per sim step) */
-  stepFx(dt: number) { this.vfx.step(dt); }
+  stepFx(dt: number) { const t0 = this.fx.beginStep(); this.vfx.step(dt); this.fx.endStep(t0); }
 
   private placeCar(vis: CarVis, dt: number, cam: BABYLON.Vector3) {
     const c = vis.car, v = c.veh, p = v.toWorld([0, 0, 0]), q = v.rot;
@@ -206,12 +218,13 @@ export class GameView {
   }
   /** the material of a piece by what broke: glass is clear, wood brown, concrete grey, sheet metal dark */
   private pieceMat(id: string, part: string): BABYLON.Material {
-    const key = /glass|window|pane|booth/i.test(part) || /PhoneBooth/.test(id) ? 'glass' : /Bench|Sawhorse|Pole/.test(id) ? 'wood' : /Planter/.test(id) ? 'concrete' : /Bin|Cone|NewsBox|TrashBags/.test(id) ? 'plastic' : 'metal';
+    const key = /^Facade/.test(id) ? 'brick' : /glass|window|pane|booth/i.test(part) || /PhoneBooth/.test(id) ? 'glass' : /Bench|Sawhorse|Pole/.test(id) ? 'wood' : /Planter/.test(id) ? 'concrete' : /Bin|Cone|NewsBox|TrashBags/.test(id) ? 'plastic' : 'metal';
     let m = this.pieceMats.get(key);
     if (!m) {
       const p = new BABYLON.PBRMaterial('piece-' + key, this.scene); p.metallic = 0; p.roughness = 0.6; p.backFaceCulling = false;
       if (key === 'glass') { p.albedoColor = new BABYLON.Color3(0.72, 0.85, 0.88); p.alpha = 0.55; p.roughness = 0.08; p.environmentIntensity = 1.2; }
       else if (key === 'wood') p.albedoColor = new BABYLON.Color3(0.36, 0.22, 0.1);
+      else if (key === 'brick') p.albedoColor = new BABYLON.Color3(0.45, 0.2, 0.14);
       else if (key === 'concrete') p.albedoColor = new BABYLON.Color3(0.45, 0.44, 0.42);
       else if (key === 'plastic') p.albedoColor = new BABYLON.Color3(0.8, 0.35, 0.1);
       else { p.albedoColor = new BABYLON.Color3(0.22, 0.22, 0.24); p.metallic = 0.7; p.roughness = 0.45; }
@@ -222,6 +235,7 @@ export class GameView {
   private addShards(ds: unknown, p: { id: string; part: string; pieces: unknown[]; plan: { pieces: DebrisPiece[] } | null; origin: V3 }) {
     if (!p.plan || p.plan.pieces.length === 0) return;
     const mat = this.pieceMat(p.id, p.part), scene = this.scene, shadow = this.shadow;
+    if (mat === this.pieceMats.get('glass')) this.fx.glass([p.origin[0], Math.max(0.4, p.origin[1]), p.origin[2]], /^Window/.test(p.id) ? 2.2 : /booth/i.test(p.id) ? 1.5 : 0.9);
     const host: ShardHost = {
       makeMesh: (name, data: MeshData) => {
         const m = new BABYLON.Mesh(name, scene); const vd = new BABYLON.VertexData();
@@ -300,42 +314,24 @@ export class GameView {
   // ---- fire, smoke, blasts ----
   private events(take: Take) {
     const q = this.eventQueue; this.eventQueue = [];
-    for (const e of q) {
-      if (e.type === 'blast') {
-        const name = e.what === 'tanker' ? 'blast.fuel-air' : e.what === 'propane' || e.what === 'pump' ? 'blast.vessel' : 'blast.he-ground';
-        this.spawn(name, e.at, { tnt: Math.max(0.5, e.tnt) });
-        this.shake = Math.max(this.shake, Math.min(1, Math.log10(1 + e.tnt) / 2.2) * Math.max(0.05, 1 - Math.hypot(e.at[0] - take.scene.player.veh.pos[0], e.at[2] - take.scene.player.veh.pos[2]) / 160));
-      } else if (e.type === 'collapse') this.spawn('dust.collapse', e.at, {});
-      else if (e.type === 'ignite' || e.type === 'burning') this.fire(e.id, e.what, e.at, e.power);
-      else if (e.type === 'out') this.stopFire(e.id);
-      else if (e.type === 'impact' && e.speed > 6) this.spawn('electric.short-circuit', e.at, {});
-    }
+    for (const e of q) this.fx.handle(e, take);
   }
-  private spawn(name: string, at: V3, params: Record<string, number>) { if (!this.vfx.has(name)) { if (!this.warned.has(name)) { console.warn('vfx not registered', name); this.warned.add(name); } return null; } try { return this.vfx.spawn(name, { at, params } as never); } catch (e) { if (!this.warned.has(name)) { console.warn('vfx spawn', name, e); this.warned.add(name); } return null; } }
-  private warned = new Set<string>();
-  private fire(id: string, what: string, at: V3, power: number) {
-    const cur = this.flames.get(id), heat = Math.max(2e5, power);
-    if (!cur) { const kind = what === 'tanker' ? 'fire.vehicle' : what === 'car' ? 'fire.vehicle' : 'fire.vehicle'; const h = this.spawn(kind, [at[0], Math.max(0, at[1] - 0.3), at[2]], { heat }); if (h) this.flames.set(id, { handle: h, heat, kind }); return; }
-    if (Math.abs(heat - cur.heat) / cur.heat > 0.15) { this.vfx.setParam(cur.handle as never, 'heat', heat); cur.heat = heat; }
-  }
-  private stopFire(id: string) { const f = this.flames.get(id); if (f) { this.vfx.stop(f.handle as never); this.flames.delete(id); } }
-  private flameFrame(_take: Take) { /* flames follow their store through the 'burning' events (position at each event) */ }
 
   // ---- the camera ----
   /** the camera of this phase: the cab by default; during a verdict the set camera that saw the take's big moment */
   setView(v: ViewCamera) { this.view = v; this.camInit = false; }
   private placeCamera(take: Take, dt: number, head: { yaw: number; pitch: number; back: boolean }) {
     const cam = this.camera;
-    this.shake = Math.max(0, this.shake - dt * 0.8);
+    const sk = this.fx.shake(dt, this.view.mode === 'set' ? 0.45 : 1);
     if (this.view.mode === 'set' && this.view.set) {
       const s = this.view.set;
-      cam.position.set(s.pos[0], s.pos[1], s.pos[2]); cam.fov = s.fov;
+      cam.position.set(s.pos[0] + sk.p[0], s.pos[1] + sk.p[1], s.pos[2] + sk.p[2]); cam.fov = s.fov;
       const f = new BABYLON.Vector3(s.target[0] - s.pos[0], s.target[1] - s.pos[1], s.target[2] - s.pos[2]).normalize();
       // follow the action a little: aim at the player's car or the villain's, whichever the sim says matters, within the frame
       const t = take.scene.vincent.veh.pos, p = take.scene.player.veh.pos, near = Math.abs(t[0] - s.target[0]) < Math.abs(p[0] - s.target[0]) ? t : p;
       const aim = new BABYLON.Vector3(near[0] - s.pos[0], near[1] + 1 - s.pos[1], near[2] - s.pos[2]);
       const want = f;
-      cam.rotationQuaternion = lookQuat(want, BABYLON.Vector3.Up()); return;
+      cam.rotationQuaternion = lookQuat(want, BABYLON.Vector3.Up()).multiply(BABYLON.Quaternion.RotationYawPitchRoll(sk.r[0], sk.r[1], sk.r[2])); return;
     }
     const car = take.scene.player, v = car.veh;
     const driver = v.toWorld([0.25, 1.12, 0.38]);
@@ -348,10 +344,9 @@ export class GameView {
     void target;
     if (!this.camInit) { this.camQ.copyFrom(bodyQ); this.camInit = true; } else BABYLON.Quaternion.SlerpToRef(this.camQ, bodyQ, Math.min(1, dt * 14), this.camQ);
     this.back += ((head.back ? Math.PI : 0) - this.back) * Math.min(1, dt * 12);
-    const q = this.camQ.multiply(BABYLON.Quaternion.RotationYawPitchRoll(head.yaw + this.back, -head.pitch, 0));
+    const q = this.camQ.multiply(BABYLON.Quaternion.RotationYawPitchRoll(head.yaw + this.back + sk.r[0], -head.pitch + sk.r[1], sk.r[2]));
     cam.rotationQuaternion = q;
-    const sh = this.shake * 0.05;
-    cam.position.set(driver[0] + (Math.random() - 0.5) * sh, driver[1] + (Math.random() - 0.5) * sh, driver[2] + (Math.random() - 0.5) * sh);
+    cam.position.set(driver[0] + sk.p[0], driver[1] + sk.p[1], driver[2] + sk.p[2]);
   }
   /** can a camera at `p` see the point `t` (no tree, post or building in the way)? one ray against the scene's meshes, the cars and the ground aside */
   private clearView(p: V3, t: V3, slack = 1.5): boolean {
@@ -384,7 +379,7 @@ export class GameView {
     return { ...SET_CAMERAS[0]!, pos: [focus[0] - 30, 8, 14], target: focus };
   }
   dispose() { this.vfxView.dispose?.(); }
-  get stats() { return { cars: this.cars.size, fx: this.vfx.count, particles: this.vfx.particles, flames: this.flames.size }; }
+  get stats() { return { cars: this.cars.size, fx: this.vfx.count, particles: this.vfx.particles, flames: this.fx.stats.effects, fxMs: this.fx.stats.fxMs, drawMs: this.fx.stats.drawMs, level: this.fx.stats.level }; }
 }
 
 /** the camera orientation for a forward and an up (left-handed, as the scene) */

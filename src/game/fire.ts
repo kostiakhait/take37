@@ -242,6 +242,7 @@ export class FireWorld {
       c.hitBy = t.id; c.hitAt = sim.t;
       for (const d of s.detached) sim.emit({ t: sim.t, type: 'detach', car: c.id, part: d, at: [...p] as Vec3 });
     }
+    if (tnt >= 20) sim.blastFacades(at, tnt, depth + 1);
     for (const pr of sim.props) {
       if (pr.state !== 'whole') continue;
       const bc = pr.def.box, c: Vec3 = [(bc.min[0] + bc.max[0]) / 2, (bc.min[1] + bc.max[1]) / 2, (bc.min[2] + bc.max[2]) / 2];

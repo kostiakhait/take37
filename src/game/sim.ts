@@ -9,6 +9,7 @@ import { CAR_KINDS, SUBSTEPS, type KindId } from './config';
 import type { CarBuild } from './carspec';
 import type { Box, Layout, PropDef } from './layout';
 import { Rng } from './rng';
+import { blastAt } from '@ferret/physics-explosions';
 
 export type Role = 'player' | 'vincent' | 'traffic' | 'parked' | 'tanker';
 export interface Controls { throttle: number; brake: number; steer: number }
@@ -30,6 +31,7 @@ export interface Prop {
 }
 export type SimEvent =
   | { t: number; type: 'impact'; a: string; b: string; at: Vec3; speed: number; energy: number }
+  | { t: number; type: 'scrape'; car: string; at: Vec3; speed: number; dir: Vec3 }
   | { t: number; type: 'detach'; car: string; part: string; at: Vec3 }
   | { t: number; type: 'wreck'; car: string; role: Role; kind: KindId; at: Vec3; depth: number; cause: string | null }
   | { t: number; type: 'prop'; id: string; kind: string; at: Vec3; how: 'knocked' | 'broken' | 'fell'; depth: number }
@@ -156,6 +158,27 @@ export class Sim {
       this.emit({ t: this.t, type: 'prop', id, kind: 'Window', at: [cx, 1.5, faceZ], how: 'broken', depth: this.depthOf(c.id) });
     }
   }
+  /** the blast wave of `tnt` kg of TNT at `at` against the street buildings: where the overpressure on a facade is over what a brick wall bay of 0.3 m stands (about 30 kPa), a 3 x 3 m bay of the wall is made as a module thing (brick) and hit with the blast's impulse; the module breaks it into pieces that fly and fall (rubble). The street's visible mesh is one merged piece, so the hole itself cannot be cut (see engine-changes.txt); the pieces, the dust and the sound are real */
+  private bays = 0;
+  blastFacades(at: Vec3, tnt: number, depth: number) {
+    let made = 0;
+    for (const b of this.statics) {
+      if (made >= 3 || this.bays >= 14) break;
+      if (b.max[1] - b.min[1] < 4 || b.max[0] - b.min[0] < 6) continue;
+      const nx = Math.max(b.min[0], Math.min(b.max[0], at[0])), nz = Math.max(b.min[2], Math.min(b.max[2], at[2]));
+      const r = Math.hypot(nx - at[0], nz - at[2]); if (r < 3 || r > 70) continue;
+      const bl = blastAt(r, tnt); if (bl.overpressure < 30e3) continue;
+      const faceZ = (b.min[2] + b.max[2]) / 2 > 0 ? b.min[2] : b.max[2], id = `Facade_${Math.round(b.min[0])}_${Math.round(faceZ)}_${this.bays}`;
+      const cx = Math.max(b.min[0] + 2, Math.min(b.max[0] - 2, at[0])), cy = 3.2;
+      this.ds.defineThing({ id, root: 'wall', parts: [{ id: 'wall', substance: 'brick', size: [3, 3, 0.3], thickness: 0.3, mass: 3 * 3 * 0.3 * 1900 }] });
+      const d = this.ds.thing(id); d.frame = { position: [cx, cy, faceZ], rotation: [0.7071068, 0, 0, 0.7071068] };
+      const n: Vec3 = [0, 0, faceZ > 0 ? -1 : 1], speed = Math.min(40, 10 + bl.overpressure / 12e3);
+      const res = this.ds.contact(id, { point: [cx, cy, faceZ], normal: mul(n, -1), speed, otherMass: 4000, restitution: 0.1, area: 2.5, step: this.tick });
+      this.bays++; made++;
+      this.emit({ t: this.t, type: 'prop', id, kind: 'Facade', at: [cx, cy, faceZ], how: 'broken', depth });
+      void res;
+    }
+  }
   /** a hit on a prop through the module: the pieces it throws, and whether the material gave way (wood, glass, stone) */
   private propContact(pr: Prop, pt: Vec3, n: Vec3, speed: number, otherMass: number): HitResult | null {
     return this.ds.contact(pr.id, { point: pt, normal: mul(n, -1), speed, otherMass, restitution: 0.2, area: 0.25, step: this.tick });
@@ -242,7 +265,7 @@ export class Sim {
         const r = this.collidePair(a, b);
         if (r && r.speed > 1.2) {
           a.hitBy = b.id; a.hitAt = this.t; b.hitBy = a.id; b.hitAt = this.t;
-          const at = r.a ? a.veh.pos : b.veh.pos, e = 0.5 * (a.veh.mass * b.veh.mass / (a.veh.mass + b.veh.mass)) * r.speed * r.speed;
+          const at = r.point, e = 0.5 * (a.veh.mass * b.veh.mass / (a.veh.mass + b.veh.mass)) * r.speed * r.speed;
           this.emit({ t: this.t, type: 'impact', a: a.id, b: b.id, at: [...at] as Vec3, speed: r.speed, energy: e });
           if (r.a) this.afterStrike(a, r.a, b.id, r.speed); if (r.b) this.afterStrike(b, r.b, a.id, r.speed);
           void wasA; void wasB;
@@ -254,11 +277,11 @@ export class Sim {
     }
   }
   /** two cars meet: the impulse at the contact (momentum conserved, both turn), the overlap pushed apart by the inverse masses, and, above the resting speed, each car takes the hit of its side through the module */
-  private collidePair(a: Car, b: Car): { speed: number; a?: StrikeResult; b?: StrikeResult } | null {
+  private collidePair(a: Car, b: Car): { speed: number; point: Vec3; a?: StrikeResult; b?: StrikeResult } | null {
     const A = a.veh, B = b.veh, c = hullContact(A, B);
     if (!c) return null;
     const n = c.normal, vrel = sub(B.velocityAt(c.point), A.velocityAt(c.point)), vn = dot(vrel, n);
-    const out: { speed: number; a?: StrikeResult; b?: StrikeResult } = { speed: Math.max(0, -vn) };
+    const out: { speed: number; point: Vec3; a?: StrikeResult; b?: StrikeResult } = { speed: Math.max(0, -vn), point: c.point };
     const ia = 1 / A.mass, ib = 1 / B.mass, ra = sub(c.point, A.pos), rb = sub(c.point, B.pos);
     const ka = dot(cross(A.invInertia(cross(ra, n)), ra), n), kb = dot(cross(B.invInertia(cross(rb, n)), rb), n);
     if (vn < 0) {
@@ -279,6 +302,7 @@ export class Sim {
     this.onStrike?.(c, s, [...c.veh.pos] as Vec3, other, speed);
   }
   private seenDetached = new Map<string, number>();
+  private scrapedAt = new Map<string, number>();
   private spawnDetached(c: Car) {
     const done = this.seenDetached.get(c.id) ?? 0, bodies = c.veh.bodies;
     for (let i = done; i < bodies.length; i++) {
@@ -292,13 +316,14 @@ export class Sim {
   private resolveRigid(c: Car, n: Vec3, depth: number, pt: Vec3, otherId: string, restitution = 0.1, otherMass = 1e6, mu = 0.5): number {
     const v = c.veh, vrel = v.velocityAt(pt), vn = dot(vrel, n);
     c.veh.pos = add(v.pos, mul(n, Math.min(depth, 0.6)));
-    if (vn >= 0) return 0;
+    if (vn >= 0) { const w = sub(vrel, mul(n, vn)), wl = len(w); if (wl > 3.5 && vn > -0.5 && this.t - (this.scrapedAt.get(c.id) ?? -1) > 0.06) { this.scrapedAt.set(c.id, this.t); this.emit({ t: this.t, type: 'scrape', car: c.id, at: [...pt] as Vec3, speed: wl, dir: [-w[0] / wl, 0.25, -w[2] / wl] }); } return 0; }
     const r = sub(pt, v.pos), rn = cross(r, n), k = dot(cross(v.invInertia(rn), r), n);
     const j = (-(1 + restitution) * vn) / (1 / v.mass + k);
     v.applyImpulse(mul(n, j), pt);
     const vt = sub(vrel, mul(n, vn)), vtl = len(vt);
     if (vtl > 1e-3) { const jt = Math.min(mu * j, (vtl * v.mass) / 2); v.applyImpulse(mul(vt, -jt / vtl), pt); }
     const speed = -vn;
+    if (vtl > 3.5 && this.t - (this.scrapedAt.get(c.id) ?? -1) > 0.06) { this.scrapedAt.set(c.id, this.t); this.emit({ t: this.t, type: 'scrape', car: c.id, at: [...pt] as Vec3, speed: vtl, dir: [-vt[0] / vtl, 0.25, -vt[2] / vtl] }); }
     if (speed > 1.2) {
       const s = this.strikeCar(c, { point: pt, normal: n, speed, otherMass, restitution, rigid: otherId === 'building' });
       c.hitBy = otherId; c.hitAt = this.t;
