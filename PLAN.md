@@ -131,3 +131,9 @@ Penalties (waiting, extra steamer passes) are shown to the player only through t
 Director during takes (all scenes): he shouts and gestures along the way, reacting to what happens (hurry, praise, despair). LOWER PRIORITY by the owner's explicit order (2026-11-12): built after everything else; the director's reaction after the take stays as planned.
 
 Order of work (owner's order 2026-11-12): NO work on scene 2 until scene 1 is finished. The scene 2 description above is design only.
+
+## Structure of every scene (owner's decision 2026-11-12)
+
+Each scene consists of a prologue, the playable part and an epilogue. The prologue and epilogue are shot from the third person and driven by the AI; the playable part is from Matthew's eyes and driven by the player.
+
+Scene 1: prologue: Matthew gets up from his chair (the prop is already in place), Vincent gets up from his chair, both walk to their cars and get in; each take they walk a little differently (variation per take). Epilogue: Matthew comes out of the ruins of the street and walks back to his chair. The playable part is built first; prologue and epilogue after it.
