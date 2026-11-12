@@ -1647,9 +1647,11 @@ def export(root, path, lod=False):
     mods = []
     if lod:
         for ob in obs:
-            if ob.type == 'MESH' and len(ob.data.polygons) > 300:
+            # the painted panels and the glass keep their full mesh here: Blender's collapse decimation pinched the rounded corners (the front fenders came out wedged and crumpled,
+            # their shading read as an unpainted panel in the game); the game's build simplifies *_lod1 itself (meshopt, error-bounded), which keeps the shape
+            if ob.type == 'MESH' and len(ob.data.polygons) > 300 and not ob.name.startswith(('Body', 'Door_', 'Hood', 'Trunk', 'Tailgate', 'Glass')):
                 md = ob.modifiers.new('lod', 'DECIMATE')
-                r = 0.08 if ob.name.startswith(('Underbody', 'Engine')) else (0.45 if ob.name.startswith(('Body', 'Door_', 'Hood', 'Trunk', 'Tailgate', 'Glass')) else 0.2)
+                r = 0.08 if ob.name.startswith(('Underbody', 'Engine')) else 0.2
                 md.ratio = r
                 mods.append((ob, md))
     for ob in obs:

@@ -55,6 +55,9 @@ def main():
                 for n in m.node_tree.nodes:
                     if n.type == 'BSDF_PRINCIPLED' and n.inputs['Coat Weight'].default_value > 0.9:
                         n.inputs['Coat Roughness'].default_value = float(cr)
+    if '--cull' in argv:      # as the game draws them (Babylon culls back faces): EEVEE only
+        for m in bpy.data.materials:
+            m.use_backface_culling = True
     sc = bpy.context.scene
     if arg('--engine', 'cycles') == 'eevee':
         sc.render.engine = 'BLENDER_EEVEE_NEXT'
@@ -104,6 +107,10 @@ def main():
         'top': (Vector((0, 0, 40)), Vector((0, 0, 0)), 'ortho', 6.2 * k),
         'three': (Vector((6.2 * k, 4.6 * k, 1.9)), ctr, 'persp', 40),
         'rear3': (Vector((-6.0 * k, -4.4 * k, 2.2)), ctr, 'persp', 40),
+        'three_r': (Vector((6.2 * k, -4.6 * k, 1.9)), ctr, 'persp', 40),
+        'rear3_l': (Vector((-6.0 * k, 4.4 * k, 2.2)), ctr, 'persp', 40),
+        'fender_l': (Vector((3.6 * k, 3.0, 1.2)), Vector((1.5 * k, 0.6, 0.6)), 'persp', 45),
+        'fender_r': (Vector((3.6 * k, -3.0, 1.2)), Vector((1.5 * k, -0.6, 0.6)), 'persp', 45),
         'low': (Vector((4.6 * k, 2.8 * k, 0.55)), ctr, 'persp', 35),
         'detail': (Vector((3.9 * k, 2.2 * k, 1.25)), Vector((1.5 * k, 0.5, 0.7)), 'persp', 50),
         'inside': (Vector((-0.5 * k, 2.4, 1.3)), Vector((0.2, 0.2, 0.85)), 'persp', 32),
@@ -130,8 +137,8 @@ def main():
         bpy.ops.render.render(write_still=True)
         print('frame', f, flush=True)
         if arg('--engine', 'cycles') == 'eevee':
-            import gpu
-            print('RENDERER', gpu.platform.renderer_get(), flush=True)
+            import gpu as gpumod
+            print('RENDERER', gpumod.platform.renderer_get(), flush=True)
 
 
 main()
