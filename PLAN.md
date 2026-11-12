@@ -123,3 +123,5 @@ Scale and people of scene 2 (owner's decision): fewer soldiers and a smaller pla
 Mole length: 250 m (the sample's is 1.1 km); about 40-50 s of running from the beach to the cages at the end.
 
 Cages: one in the middle of the mole, one at its end. The steamer comes alongside at both places in turn (there and here); Matthew must be at the cage when the steamer arrives. Waiting counts against the take (score penalty that grows with the time spent waiting), so he has to hurry and use the steamer's arrival windows. Exact order and timing of the arrivals: to be tuned in play.
+
+Steamer route (owner's correction): as the destroyer in the Dunkirk sample, the steamer comes in from the end of the mole, so it reaches the END cage first, then the MIDDLE one. If a cage was not pushed aboard, the steamer goes back to the end and returns once more: each extra pass is a score penalty for the scene. (Replaces the earlier "middle then end" reading.)

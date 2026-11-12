@@ -58,3 +58,4 @@ Every operation made to create the game: local time and description.
 | 2026-11-12 09:07 | Scene 2: fewer soldiers, smaller playing field, no evacuation queue; two kinds of people: henchmen (khaki soldiers) and storming sailors (the steamer's crew); optional distant assault scene for atmosphere, no camera approach (owner's decision). |
 | 2026-11-12 09:07 | Scene 2: the mole is 250 m long (owner's decision). |
 | 2026-11-12 09:08 | Scene 2: one cage in the middle of the mole, one at the end; the steamer comes alongside at both places in turn; Matthew must reach the cage when the steamer arrives; waiting is a score penalty (owner's decision). |
+| 2026-11-12 09:14 | Scene 2 steamer route: it comes in from the end of the mole like the destroyer in the sample: end cage first, then the middle one; if a cage is missed the steamer makes another pass, each pass costs score (owner's correction). |
