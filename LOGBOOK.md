@@ -51,3 +51,4 @@ Every operation made to create the game: local time and description.
 | 2026-11-12 08:59 | Scene 2: unlimited ammunition for the submachine gun and the bazooka for now (owner's decision, time is short). |
 | 2026-11-12 09:00 | Scene 2: the cages are pushed physically with the shoulder on engine rigid-body physics (owner's decision; the game also demonstrates the engine's physics). |
 | 2026-11-12 09:00 | Scene 2: the steamer comes to the pier by itself (AI); a cage pushed before the steamer is alongside sinks and the take is failed (owner's decision). |
+| 2026-11-12 09:01 | Scene 2: the steamer arrives a fixed time after the take starts, steered by a library sailor (chr-human-mh-sailor, MetaHuman merchant seaman; заимствовано из Феррета). |
