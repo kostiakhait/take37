@@ -12,6 +12,8 @@ import { ACTIONS, BINDINGS, CAR_KINDS, FIXED_DT, type KindId } from './game/conf
 import { qRot } from '@ferret/destruction/vehicle';
 import { holdLane } from './game/ai';
 import type { KindInfos } from './game/scene1';
+import { ShopView, hideConverted } from './game/shopfronts-view';
+import { SHOP_BUILDINGS, parseShops } from './game/shopfronts';
 
 /**
  * Scene 1 of TAKE 37, the playable part: the set (src/scene/set.ts) with the full gas station, the cars, the chase, the destruction and the take flow.
@@ -42,7 +44,7 @@ async function bytes(url: string): Promise<ArrayBuffer> {
 async function main() {
   $('splashver').textContent = (globalThis as { __TAKE37_BUILD__?: string }).__TAKE37_BUILD__ ?? '';
   const stationNodes = new Map<string, BABYLON.TransformNode>();
-  const set = await buildSet($('c') as HTMLCanvasElement, q, (p, t) => splash.set(p * 0.6, t), { gas: 'none', keepProps: true, deferStart: true });
+  const set = await buildSet($('c') as HTMLCanvasElement, q, (p, t) => splash.set(p * 0.6, t), { gas: 'none', keepProps: true, deferStart: true, onStreetLoaded: (st) => { if (q.get('shops') !== '0') hideConverted(st); } });
   const { scene, camera, propNodes } = set;
   camera.detachControl();
 
@@ -50,6 +52,7 @@ async function main() {
   splash.set(0.62, 'Layout');
   const [street, cols, gasBuf] = await Promise.all([bytes('/art/street/street_level.glb'), bytes('/art/street/street_colliders.glb'), bytes('/art/gas-station/gas_station.glb')]);
   const layout: Layout = parseLayout(street, cols, gasBuf);
+  if (q.get('shops') !== '0') layout.shops = parseShops(glbJson(street), await Promise.all(SHOP_BUILDINGS.map(async (b) => ({ bld: b.bld, json: glbJson(await bytes(b.url)) }))));   // the converted shop fronts (?shops=0: the street as it was)
   const infos: KindInfos = {};
   const kinds = Object.keys(CAR_KINDS) as KindId[];
   const carPlan = planCarLoading(scene, kinds);   // the cars start loading now, while the layout and the station are read
@@ -84,7 +87,9 @@ async function main() {
   addEventListener('keydown', () => audio.start()); addEventListener('pointerdown', () => audio.start());
 
   const seed = q.has('seed') ? +q.get('seed')! : 0;
-  const begin = () => { take.begin(seed); view.startTake(take); view.setView({ mode: 'cab' }); verdictShown = false; if (q.get('auto') === '1') take.phaseT = 99; };
+  const shopView = new ShopView(scene, set.shadow, propNodes);
+  if (layout.shops) await shopView.load(set.street);
+  const begin = () => { take.begin(seed); view.startTake(take); shopView.startTake(take.scene.sim, take.scene.sim.ds); view.setView({ mode: 'cab' }); verdictShown = false; if (q.get('auto') === '1') take.phaseT = 99; };
   let verdictShown = false, paused = false, acc = 0, yaw = 0, pitch = 0, idle = 0;
   if (take.phase !== 'over') begin();
 
@@ -122,6 +127,7 @@ async function main() {
     if (take.phase === 'verdict' && !verdictShown) { verdictShown = true; view.setView({ mode: 'set', set: view.bestSetCamera(take) }); }
     const car = take.player, f = qRot(car.veh.rot, [1, 0, 0]), v = car.veh.vel[0] * f[0] + car.veh.vel[2] * f[2];
     view.frame(take, dt, { yaw, pitch, back: input.down('lookback') });
+    shopView.frame(camera.globalPosition);
     audio.update(v, car.ctl.throttle, inp.horn, sirenOn, take.t);
     hud.update(take, v, paused, (a) => input.prompt(a));
   });

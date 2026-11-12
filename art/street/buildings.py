@@ -13,6 +13,7 @@ from mathutils import Vector as V
 
 import kitlib as K
 import interiors_kit as I
+import partsplit as PS
 from kitlib import MB
 
 FH0, FH = 4.3, 3.4            # ground-floor and upper floor heights
@@ -147,7 +148,8 @@ def glass_depth(m, xg, a, b, zb, zt, rnd):
         if c[1] - c[0] < 0.03 and c[2] - c[3] < 0.03:
             continue
         m.quad((xg + 0.004, c[1], za), (xg + 0.004, c[0], za), (xg + 0.004, c[3], zz), (xg + 0.004, c[2], zz), 'glass_refl', out=(1, 0, 0))
-    m.box(xg - 0.1, a - 0.04, zb - 0.012, xg + 0.36, b + 0.04, zb + 0.03, 'trim_white', bv=0.006)    # the sill: projects 4 cm past the stall-board cap and is light against the dark glass
+    with m.part(None):
+        m.box(xg - 0.1, a - 0.04, zb - 0.012, xg + 0.36, b + 0.04, zb + 0.03, 'trim_white', bv=0.006)    # the sill: projects 4 cm past the stall-board cap and is light against the dark glass
 
 
 def window_dressing(m, xg, a, b, zb, zt, rnd, kind, W):
@@ -199,7 +201,7 @@ def shopfront(m, spec, hi, x0, y0, y1, rnd):
     shopmat = spec.get('bulk', 'brick_brown')
     wood = 'wood_dark'
     # frames around each display window
-    for (a, b) in seg:
+    for si, (a, b) in enumerate(seg):
         if b - a < 0.8:
             continue
         # bulkhead panel
@@ -213,8 +215,9 @@ def shopfront(m, spec, hi, x0, y0, y1, rnd):
                      (c_ / 4 + 0.002, 1 - (r_ + 1) / 4 + 0.002, (c_ + 1) / 4 - 0.002, 1 - r_ / 4 - 0.002), out=(1, 0, 0))
         # glass, set back 0.25
         xg = x0 - 0.22
-        m.quad((xg, b, zb), (xg, a, zb), (xg, a, zt), (xg, b, zt), 'glass', out=(1, 0, 0))
-        glass_depth(m, xg, a, b, zb, zt, rnd)
+        with m.part(f'pane{si}'):
+            m.quad((xg, b, zb), (xg, a, zb), (xg, a, zt), (xg, b, zt), 'glass', out=(1, 0, 0))
+            glass_depth(m, xg, a, b, zb, zt, rnd)
         # frame: aluminium-wood mullions
         fr = 0.06
         m.box(xg - 0.02, a, zb, xg + 0.1, a + fr, zt, wood, bv=0.006 if hi else 0)
@@ -237,11 +240,12 @@ def shopfront(m, spec, hi, x0, y0, y1, rnd):
             m.quad((x0 - 0.22, b, zb), (bx, b, zb), (bx, b, zt), (x0 - 0.22, b, zt), 'plaster_cream', out=(0, -1, 0))
     if hi:
         rm, kind, cells = I.build_interior(m, spec, x0, y0, y1, zb, zt, dpos, rnd, hi)
-        for (a, b) in seg:
+        for si, (a, b) in enumerate(seg):
             if b - a < 0.8:
                 continue
             I.display_platform(m, rm, a, b, zb, cells, rnd, kind)
-            window_dressing(m, x0 - 0.22, a, b, zb, zt, rnd, kind, W)
+            with m.part(f'pane{si}'):
+                window_dressing(m, x0 - 0.22, a, b, zb, zt, rnd, kind, W)
         m.face([(rm['xf'], dy0, 0.12), (x0 - rec - 0.04, dy0, 0.12), (x0 - rec - 0.04, dy1, 0.12), (rm['xf'], dy1, 0.12)], I.STYLE[kind][1], out=(0, 0, 1))   # floor behind the door
     # recessed entrance
     xr = x0 - rec
@@ -250,15 +254,20 @@ def shopfront(m, spec, hi, x0, y0, y1, rnd):
     m.quad((x0 - 0.12, dy0, zt), (xr, dy0, zt), (xr, dy1, zt), (x0 - 0.12, dy1, zt), 'plaster_cream', out=(0, 0, -1))
     m.quad((x0 - 0.12, dy0, 0.01), (xr, dy0, 0.01), (xr, dy1, 0.01), (x0 - 0.12, dy1, 0.01), 'concrete', out=(0, 0, 1))
     # glass door with a wooden frame, a push bar and kick plate
-    m.box(xr - 0.04, dpos - door_w / 2, 0.0, xr + 0.04, dpos + door_w / 2, 2.15, wood, bv=0.01 if hi else 0, skip=())
-    m.quad((xr + 0.045, dpos + door_w / 2 - 0.1, 0.5), (xr + 0.045, dpos - door_w / 2 + 0.1, 0.5), (xr + 0.045, dpos - door_w / 2 + 0.1, 2.05), (xr + 0.045, dpos + door_w / 2 - 0.1, 2.05), 'glass', out=(1, 0, 0))
+    with m.part('door'):
+        m.box(xr - 0.04, dpos - door_w / 2, 0.0, xr + 0.04, dpos + door_w / 2, 2.15, wood, bv=0.01 if hi else 0, skip=())
+    with m.part('doorglass'):
+        m.quad((xr + 0.045, dpos + door_w / 2 - 0.1, 0.5), (xr + 0.045, dpos - door_w / 2 + 0.1, 0.5), (xr + 0.045, dpos - door_w / 2 + 0.1, 2.05), (xr + 0.045, dpos + door_w / 2 - 0.1, 2.05), 'glass', out=(1, 0, 0))
     if hi:
-        m.box(xr + 0.04, dpos - 0.04, 0.95, xr + 0.12, dpos - 0.01, 1.1, 'chrome', bv=0.003)               # handle
-        m.box(xr + 0.045, dpos - door_w / 2 + 0.1, 0.05, xr + 0.055, dpos + door_w / 2 - 0.1, 0.45, 'steel')
-        m.quad((xr - 0.04, dpos + door_w / 2 - 0.1, 0.5), (xr - 0.04, dpos - door_w / 2 + 0.1, 0.5), (xr - 0.04, dpos - door_w / 2 + 0.1, 2.05), (xr - 0.04, dpos + door_w / 2 - 0.1, 2.05), 'glass', out=(-1, 0, 0))
+        with m.part('door'):
+            m.box(xr + 0.04, dpos - 0.04, 0.95, xr + 0.12, dpos - 0.01, 1.1, 'chrome', bv=0.003)               # handle
+            m.box(xr + 0.045, dpos - door_w / 2 + 0.1, 0.05, xr + 0.055, dpos + door_w / 2 - 0.1, 0.45, 'steel')
+        with m.part('doorglass'):
+            m.quad((xr - 0.04, dpos + door_w / 2 - 0.1, 0.5), (xr - 0.04, dpos - door_w / 2 + 0.1, 0.5), (xr - 0.04, dpos - door_w / 2 + 0.1, 2.05), (xr - 0.04, dpos + door_w / 2 - 0.1, 2.05), 'glass', out=(-1, 0, 0))
         m.box(x0 - 0.05, dpos - 0.5, 0.0, x0 + 0.2, dpos + 0.5, 0.04, 'concrete', bv=0.01)           # threshold step
     # transom above door
-    m.quad((xr + 0.01, dpos + door_w / 2, 2.2), (xr + 0.01, dpos - door_w / 2, 2.2), (xr + 0.01, dpos - door_w / 2, zt - 0.05), (xr + 0.01, dpos + door_w / 2, zt - 0.05), 'glass', out=(1, 0, 0))
+    with m.part('transom'):
+        m.quad((xr + 0.01, dpos + door_w / 2, 2.2), (xr + 0.01, dpos - door_w / 2, 2.2), (xr + 0.01, dpos - door_w / 2, zt - 0.05), (xr + 0.01, dpos + door_w / 2, zt - 0.05), 'glass', out=(1, 0, 0))
     # sign band with the atlas board; a cornice over it
     sy0, sy1 = y0 + 0.2, y1 - 0.2
     sz0, sz1 = zt + 0.12, zt + 0.12 + min(0.95, (sy1 - sy0) / 7.0)
@@ -271,29 +280,31 @@ def shopfront(m, spec, hi, x0, y0, y1, rnd):
     bw = min(sy1 - sy0 - 0.1, (sz1 - sz0) * 8.0)
     bh = bw / 8.0
     yc, zc = (sy0 + sy1) / 2, (sz0 + sz1) / 2
-    m.uvrect([(x0 + 0.121, yc - bw / 2, zc - bh / 2), (x0 + 0.121, yc + bw / 2, zc - bh / 2), (x0 + 0.121, yc + bw / 2, zc + bh / 2), (x0 + 0.121, yc - bw / 2, zc + bh / 2)], 'shopsigns', r, out=(1, 0, 0))
+    with m.part('sign'):
+        m.uvrect([(x0 + 0.121, yc - bw / 2, zc - bh / 2), (x0 + 0.121, yc + bw / 2, zc - bh / 2), (x0 + 0.121, yc + bw / 2, zc + bh / 2), (x0 + 0.121, yc - bw / 2, zc + bh / 2)], 'shopsigns', r, out=(1, 0, 0))
     # awning: sloped canvas, striped, with valence and frame arms
     if spec.get('awning'):
-        az0, az1, ad = zt + 0.05, zt - 0.62, 1.25
-        a0, a1 = spec['awning']
-        ay0, ay1 = y0 + 0.4, y1 - 0.4
-        nst = max(2, int((ay1 - ay0) / 0.3)) if hi else max(2, int((ay1 - ay0) / 1.2))
-        nt0, nt1 = spec.get('ladder_notch', (1e9, 1e9))                                   # the fire-escape drop ladder comes down here: the canvas is cut away round it
-        for i in range(nst):
-            ya0, yb0 = ay0 + (ay1 - ay0) * i / nst, ay0 + (ay1 - ay0) * (i + 1) / nst
-            mt = a0 if i % 2 == 0 else a1
-            for (ya, yb) in (((ya0, min(yb0, nt0)), (max(ya0, nt1), yb0))):
-                if yb - ya < 0.02:
-                    continue
-                m.face([(x0 + 0.1, yb, az0), (x0 + 0.1, ya, az0), (x0 + ad, ya, az1), (x0 + ad, yb, az1)], mt, out=(0.3, 0, 1))                      # top
-                m.face([(x0 + 0.1, ya, az0 - 0.02), (x0 + 0.1, yb, az0 - 0.02), (x0 + ad, yb, az1 - 0.02), (x0 + ad, ya, az1 - 0.02)], mt, out=(-0.3, 0, -1))  # underside
-                m.face([(x0 + ad, yb, az1), (x0 + ad, ya, az1), (x0 + ad + 0.03, ya, az1 - 0.3), (x0 + ad + 0.03, yb, az1 - 0.3)], mt, out=(1, 0, 0))      # valence
-        if hi:
-            for yy in (ay0, ay1):
-                m.tube([(x0 + 0.1, yy, az0 - 0.05), (x0 + ad, yy, az1 - 0.05)], 0.015, 'black_metal', seg=5)
-            for (ya, yb) in ((ay0, min(ay1, nt0)), (max(ay0, nt1), ay1)):
-                if yb - ya > 0.05:
-                    m.tube([(x0 + ad, ya, az1 - 0.03), (x0 + ad, yb, az1 - 0.03)], 0.012, 'black_metal', seg=5)
+        with m.part('awning'):
+            az0, az1, ad = zt + 0.05, zt - 0.62, 1.25
+            a0, a1 = spec['awning']
+            ay0, ay1 = y0 + 0.4, y1 - 0.4
+            nst = max(2, int((ay1 - ay0) / 0.3)) if hi else max(2, int((ay1 - ay0) / 1.2))
+            nt0, nt1 = spec.get('ladder_notch', (1e9, 1e9))                                   # the fire-escape drop ladder comes down here: the canvas is cut away round it
+            for i in range(nst):
+                ya0, yb0 = ay0 + (ay1 - ay0) * i / nst, ay0 + (ay1 - ay0) * (i + 1) / nst
+                mt = a0 if i % 2 == 0 else a1
+                for (ya, yb) in (((ya0, min(yb0, nt0)), (max(ya0, nt1), yb0))):
+                    if yb - ya < 0.02:
+                        continue
+                    m.face([(x0 + 0.1, yb, az0), (x0 + 0.1, ya, az0), (x0 + ad, ya, az1), (x0 + ad, yb, az1)], mt, out=(0.3, 0, 1))                      # top
+                    m.face([(x0 + 0.1, ya, az0 - 0.02), (x0 + 0.1, yb, az0 - 0.02), (x0 + ad, yb, az1 - 0.02), (x0 + ad, ya, az1 - 0.02)], mt, out=(-0.3, 0, -1))  # underside
+                    m.face([(x0 + ad, yb, az1), (x0 + ad, ya, az1), (x0 + ad + 0.03, ya, az1 - 0.3), (x0 + ad + 0.03, yb, az1 - 0.3)], mt, out=(1, 0, 0))      # valence
+            if hi:
+                for yy in (ay0, ay1):
+                    m.tube([(x0 + 0.1, yy, az0 - 0.05), (x0 + ad, yy, az1 - 0.05)], 0.015, 'black_metal', seg=5)
+                for (ya, yb) in ((ay0, min(ay1, nt0)), (max(ay0, nt1), ay1)):
+                    if yb - ya > 0.05:
+                        m.tube([(x0 + ad, ya, az1 - 0.03), (x0 + ad, yb, az1 - 0.03)], 0.012, 'black_metal', seg=5)
     return dict(door=dpos, zt=zt, sz1=sz1)
 
 
@@ -456,6 +467,8 @@ def make_building(spec, lod):
     ztop = H + 0.0
     m = MB(f"Bld_{spec['name']}_LOD{lod}", seed)
     m.tone = tone_fn(seed)
+    if spec.get('split'):
+        m = PS.Router(m)                 # the shop front's parts go to meshes of their own (partsplit.py)
     wall, trim = spec['wall'], spec['trim']
     y0, y1 = -W / 2, W / 2
     step = 1.0 if hi else 2.4

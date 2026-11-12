@@ -9,6 +9,7 @@ import { CAR_KINDS, SUBSTEPS, type KindId } from './config';
 import type { CarBuild } from './carspec';
 import type { Box, Layout, PropDef } from './layout';
 import { Rng } from './rng';
+import { ShopSim } from './shopfronts';
 import { blastAt } from '@ferret/physics-explosions';
 
 export type Role = 'player' | 'vincent' | 'traffic' | 'parked' | 'tanker';
@@ -100,6 +101,8 @@ export class Sim {
   /** things that stand in the way and are not props: the buildings */
   statics: Box[];
   private nextDebris = 1;
+  /** the converted buildings' shop fronts (windows, door, sign, awning) as things of the destruction module; null when no building is converted */
+  shops: ShopSim | null = null;
   /** the engine's destruction module: every hit on a car, a prop or a station part goes through it (crush, glass, wood, stone; the pieces that fly come from it) */
   readonly ds: DestructionService;
   /** the entity ids that became active (wreck, blast, fire) with the chain depth and the time: the chain reactions */
@@ -122,6 +125,7 @@ export class Sim {
       this.props.push({ def: { id: s.id, kind: s.id.replace(/_\d+$/, ''), mass: s.mass, box: s.box, cls }, id: s.id, state: 'whole', capacityJ: cap, knocked: false, station: { fuelL: s.fuelL, burnable: s.burnable, explosive: s.explosive, supports: s.supports, lit: s.lit } });
     }
     for (const pr of this.props) this.defineProp(pr);
+    if (layout.shops && layout.shops.parts.length > 0) this.shops = new ShopSim(this, layout.shops, hullVsBox);
   }
 
   /** a prop or a station part as a destructible thing of the module: one part of the material it is made of, in the style of the street furniture (hollywood) */
@@ -161,6 +165,7 @@ export class Sim {
   /** the blast wave of `tnt` kg of TNT at `at` against the street buildings: where the overpressure on a facade is over what a brick wall bay of 0.3 m stands (about 30 kPa), a 3 x 3 m bay of the wall is made as a module thing (brick) and hit with the blast's impulse; the module breaks it into pieces that fly and fall (rubble). The street's visible mesh is one merged piece, so the hole itself cannot be cut (see engine-changes.txt); the pieces, the dust and the sound are real */
   private bays = 0;
   blastFacades(at: Vec3, tnt: number, depth: number) {
+    this.shops?.blast(at, tnt, depth);
     let made = 0;
     for (const b of this.statics) {
       if (made >= 3 || this.bays >= 14) break;
@@ -274,6 +279,7 @@ export class Sim {
       if (a.veh.sleeping) continue;
       this.collideStatics(a);
       this.collideProps(a);
+      this.shops?.collideCar(a);
     }
   }
   /** two cars meet: the impulse at the contact (momentum conserved, both turn), the overlap pushed apart by the inverse masses, and, above the resting speed, each car takes the hit of its side through the module */
@@ -337,7 +343,7 @@ export class Sim {
     for (const b of this.statics) {
       if (p[0] < b.min[0] - 6 || p[0] > b.max[0] + 6 || p[2] < b.min[2] - 6 || p[2] > b.max[2] + 6) continue;
       const k = hullVsBox(c.veh, b);
-      if (k) { const sp = this.resolveRigid(c, k.normal, k.depth, k.point, 'building'); if (sp > 2.5) this.breakWindow(c, b, k.point, sp); }
+      if (k) { const sp = this.resolveRigid(c, k.normal, k.depth, k.point, 'building'); if (this.shops?.wallHit(c, b, k.point, sp)) continue; if (sp > 2.5) this.breakWindow(c, b, k.point, sp); }
     }
   }
   private collideProps(c: Car) {

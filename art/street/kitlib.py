@@ -4,6 +4,7 @@
 Frame: street runs along +X, left side +Y, up +Z, origin on the ground (glb: Y up). Materials come from textures_prep.py's output ($TAKE37_TEX, default D:/temp/take37/street/tex).
 MB is a small mesh builder (welded vertices, box-projected UVs in metres, chamfered boxes, lathes, extrusions, tubes, per-corner tone for weathering).
 """
+import contextlib
 import hashlib
 import json
 import math
@@ -22,7 +23,7 @@ V = Vector
 MATS = {
     'asphalt': dict(tex='asphalt', tile=2.6), 'asphalt_worn': dict(tex='asphalt_worn', tile=3.1, rough=0.85, nrm='asphalt'),
     'sidewalk': dict(tex='sidewalk', tile=1.5), 'kerb': dict(tex='concrete_found', tile=0.9), 'concrete': dict(tex='concrete_found', tile=1.2),
-    'brick_red': dict(tex='brick_red', tile=0.75), 'brick_brown': dict(tex='brick_brown', tile=0.75), 'brick_buff': dict(tex='brick_buff', tile=0.75), 'brick_old': dict(tex='brick_old', tile=1.0),
+    'brick_red': dict(tex='brick_red', tile=2.4384), 'brick_brown': dict(tex='brick_brown', tile=2.4384), 'brick_buff': dict(tex='brick_buff', tile=2.4384), 'brick_old': dict(tex='brick_old', tile=2.4384),   # real 203 x 67 mm brick, 12 x 36 per tile (textures_facade.py)
     'plaster_cream': dict(tex='plaster_cream', tile=2.0), 'plaster_sage': dict(tex='plaster_sage', tile=2.0), 'plaster_grey': dict(tex='plaster_grey', tile=2.0),
     'plaster_rose': dict(tex='plaster_rose', tile=2.0), 'plaster_white': dict(tex='plaster_white', tile=2.0), 'trim_white': dict(tex='trim_white', tile=1.0),
     'clap_white': dict(tex='clap_white', tile=1.2, nrm='clap'), 'clap_cream': dict(tex='clap_cream', tile=1.2, nrm='clap'), 'clap_blue': dict(tex='clap_blue', tile=1.2, nrm='clap'),
@@ -307,6 +308,10 @@ class MB:
         m = Matrix.Translation((x, y, z)) @ Matrix.Rotation(rz, 4, 'Z') @ Matrix.Rotation(ry, 4, 'Y') @ Matrix.Rotation(rx, 4, 'X') @ Matrix.Scale(s, 4)
         self.push(m)
         return self
+
+    def part(self, tag):
+        """A tagged group of the geometry that follows (a shop window, the door, the awning): a plain builder ignores the tag, partsplit.Router sends it to its own mesh."""
+        return contextlib.nullcontext()
 
     def __enter__(self):
         return self

@@ -2,6 +2,7 @@
 // The set read off the art files, by node name: colliders, destructible props, parking slots, spawns, the gas station parts with their extras. Pure data (no Babylon).
 // Game frame: x along the street, y up, z across; the glTF's z is mirrored (the player lane is z = -1.7, the oncoming lane z = +1.7).
 import { glbJson, nodeBounds, type GLtf } from './glbinfo';
+import type { ShopDefs } from './shopfronts';
 
 export type V3 = [number, number, number];
 export interface Box { min: V3; max: V3 }
@@ -20,12 +21,14 @@ export interface Layout {
   station: { parts: StationPart[]; fireAnchors: V3[]; fireNodes: { id: string; at: V3 }[]; lot: Box; origin: V3 };
   /** road surface: |z| under this is the road, up to `walkTo` the sidewalk (m) */
   road: { half: number; walkTo: number; walkH: number };
+  /** the converted buildings' breakable shop fronts (src/game/shopfronts.ts), set by the page after it has read their files */
+  shops?: ShopDefs;
 }
 
 const ANCHORED = new Set(['Hydrant', 'UtilityPole', 'LampAcorn', 'TrafficLight', 'PhoneBooth', 'Meter', 'Mailbox']);
 const tp = (m: number[], p: V3): V3 => [m[0]! * p[0] + m[4]! * p[1] + m[8]! * p[2] + m[12]!, m[1]! * p[0] + m[5]! * p[1] + m[9]! * p[2] + m[13]!, m[2]! * p[0] + m[6]! * p[1] + m[10]! * p[2] + m[14]!];
 /** a glTF-frame box through a matrix, into the game frame (z mirrored) */
-function toGame(min: V3, max: V3, m?: number[]): Box {
+export function toGame(min: V3, max: V3, m?: number[]): Box {
   const mn: V3 = [1e9, 1e9, 1e9], mx: V3 = [-1e9, -1e9, -1e9];
   for (let c = 0; c < 8; c++) {
     let p: V3 = [c & 1 ? max[0] : min[0], c & 2 ? max[1] : min[1], c & 4 ? max[2] : min[2]];
