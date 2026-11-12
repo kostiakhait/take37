@@ -238,7 +238,7 @@ export class FireWorld {
       const dir: Vec3 = [(p[0] - at[0]) / r, 0.35, (p[2] - at[2]) / r];
       const l = Math.hypot(...dir);
       c.veh.wake(); c.veh.applyImpulse([dir[0] / l * dv * c.veh.mass, dir[1] / l * dv * c.veh.mass, dir[2] / l * dv * c.veh.mass]);
-      const s = c.veh.strike({ point: [p[0] - dir[0] / l * 2, p[1], p[2] - dir[2] / l * 2], normal: [dir[0] / l, 0, dir[2] / l], speed: Math.min(dv, 30), otherMass: 1e6, restitution: 0.1, step: sim.tick, entity: sim.cars.indexOf(c) });
+      const s = sim.strikeCar(c, { point: [p[0] - dir[0] / l * 2, p[1], p[2] - dir[2] / l * 2], normal: [dir[0] / l, 0, dir[2] / l], speed: Math.min(dv, 30), otherMass: 1e6, restitution: 0.1 });
       c.hitBy = t.id; c.hitAt = sim.t;
       for (const d of s.detached) sim.emit({ t: sim.t, type: 'detach', car: c.id, part: d, at: [...p] as Vec3 });
     }

@@ -70,7 +70,7 @@ export const SCORE = {
 export interface SetCamera { id: string; label: string; pos: [number, number, number]; target: [number, number, number]; fov: number; weight: number }
 /** the set cameras along the street, game frame (the player lane is z = -1.7); `edward` is the operator camera, a little off the road at the first block */
 export const SET_CAMERAS: SetCamera[] = [
-  { id: 'edward', label: 'Edward', pos: [58, 1.6, 7.2], target: [150, 1.2, -1.7], fov: 0.5, weight: 1.35 },
+  { id: 'edward', label: 'Edward', pos: [52, 1.8, 3.4], target: [150, 1.2, -1.7], fov: 0.5, weight: 1.35 },
   { id: 'crane', label: 'Crane', pos: [200, 7.5, 7.5], target: [260, 1.2, -1.7], fov: 0.62, weight: 1 },
   { id: 'mid', label: 'Mid street', pos: [340, 2.2, -7.5], target: [430, 1.2, -1.7], fov: 0.58, weight: 1 },
   { id: 'tele', label: 'Long lens', pos: [440, 2.0, 7.8], target: [540, 1.5, -4], fov: 0.3, weight: 1.15 },

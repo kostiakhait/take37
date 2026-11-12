@@ -4,6 +4,8 @@
 import { VfxSystem, VfxBabylonView, FULL_CATALOG } from '@ferret/vfx';
 import { qRot } from '@ferret/destruction/vehicle';
 import { DentCage } from '@ferret/destruction/view-dents';
+import { ShardView, type MeshData, type ShardHost } from '@ferret/destruction/view-shards';
+import type { DebrisPiece } from '@ferret/destruction/debris';
 import { CAR_KINDS, SET_CAMERAS, type KindId, type SetCamera } from './config';
 import type { Take } from './take';
 import type { Car, Debris, SimEvent, Prop } from './sim';
@@ -36,6 +38,11 @@ export class GameView {
   private camQ = BABYLON.Quaternion.Identity(); private camInit = false;
   private metal: BABYLON.PBRMaterial; private cloth: BABYLON.PBRMaterial;
   private eventQueue: SimEvent[] = [];
+  /** the pieces of the module's breaks (shards of glass, splinters, chips, torn bits of sheet) drawn as instances; their fall and fade are the module's (ds.advance) */
+  private shards: { view: ShardView; pieces: DebrisPiece[]; rot: BABYLON.Quaternion[]; ang: V3[]; ds: { pieceAt(p: DebrisPiece): [number, number, number] | null } }[] = [];
+  private unlisten: (() => void) | null = null;
+  private pieceMats = new Map<string, BABYLON.Material>();
+  shardStats = { sets: 0, pieces: 0, prototypes: 0 };
   view: ViewCamera = { mode: 'cab' };
   private shake = 0;
 
@@ -56,6 +63,9 @@ export class GameView {
       progress(i++, kinds.length, k);
       const load = async (url: string | undefined) => { if (!url) return undefined; const [d, f] = split(url); try { return await BABYLON.SceneLoader.LoadAssetContainerAsync(d, f, this.scene); } catch (e) { console.warn('model not loaded', url, e); return undefined; } };
       pack.full = await load(spec.glb); pack.lod = await load(spec.lod1); pack.damaged = await load(spec.damaged);
+      // the art's cab materials are near black (albedo 0.00-0.09); a cab in daylight is lit by the windows: a fill (emissive) per material, so that pillars, seats and the headliner can be seen
+      const fill: [RegExp, number, number, number][] = [[/headliner/i, 0.30, 0.32, 0.36], [/^M_interior/i, 0.15, 0.15, 0.19], [/carpet/i, 0.09, 0.09, 0.11], [/dash/i, 0.12, 0.12, 0.14], [/seat/i, 0.14, 0.13, 0.12], [/^M_seal|^M_gap|^M_black|^M_well|^M_under/i, 0.07, 0.07, 0.08]];
+      for (const c of [pack.full, pack.lod, pack.damaged]) for (const m of c?.materials ?? []) if (m instanceof BABYLON.PBRMaterial && (k === 'police' || k === 'corvette')) { const f = fill.find((x) => x[0].test(m.name)); if (f) { m.emissiveColor = new BABYLON.Color3(f[1], f[2], f[3]); m.emissiveIntensity = 1; } }
       for (const c of [pack.full, pack.lod, pack.damaged]) for (const m of c?.materials ?? []) if (/glass/i.test(m.name) && m instanceof BABYLON.PBRMaterial) { m.alpha = 0.22; m.transparencyMode = BABYLON.Material.MATERIAL_ALPHABLEND; m.backFaceCulling = false; m.needDepthPrePass = false; }
       this.packs.set(k, pack);
     }
@@ -97,6 +107,10 @@ export class GameView {
     for (const [, p] of this.props) { p.node.unfreezeWorldMatrix(); p.node.setEnabled(true); if (p.moved) { p.node.freezeWorldMatrix(p.w0); } p.moved = false; }
     for (const f of this.flames.values()) this.vfx.stop(f.handle as never);
     this.flames.clear();
+    for (const sh of this.shards) sh.view.dispose();
+    this.shards = []; this.unlisten?.();
+    const ds = take.scene.sim.ds;
+    this.unlisten = ds.listen((name, p) => { if (name === 'destruction:hit') this.addShards(ds, p); });
     for (const car of take.scene.sim.cars) this.cars.set(car.id, this.makeCar(car));
     this.lookYaw = this.lookPitch = 0; this.camInit = false;
   }
@@ -109,6 +123,7 @@ export class GameView {
     // cars
     for (const vis of this.cars.values()) this.placeCar(vis, dt, cam);
     this.debrisFrame(sim.debris);
+    this.shardFrame(sim.ds, dt);
     this.propsFrame(take);
     this.flameFrame(take);
     // camera
@@ -189,6 +204,63 @@ export class GameView {
     }
     for (const [id, n] of this.debris) if (!live.has(id)) { n.dispose(); this.debris.delete(id); }
   }
+  /** the material of a piece by what broke: glass is clear, wood brown, concrete grey, sheet metal dark */
+  private pieceMat(id: string, part: string): BABYLON.Material {
+    const key = /glass|window|pane|booth/i.test(part) || /PhoneBooth/.test(id) ? 'glass' : /Bench|Sawhorse|Pole/.test(id) ? 'wood' : /Planter/.test(id) ? 'concrete' : /Bin|Cone|NewsBox|TrashBags/.test(id) ? 'plastic' : 'metal';
+    let m = this.pieceMats.get(key);
+    if (!m) {
+      const p = new BABYLON.PBRMaterial('piece-' + key, this.scene); p.metallic = 0; p.roughness = 0.6; p.backFaceCulling = false;
+      if (key === 'glass') { p.albedoColor = new BABYLON.Color3(0.72, 0.85, 0.88); p.alpha = 0.55; p.roughness = 0.08; p.environmentIntensity = 1.2; }
+      else if (key === 'wood') p.albedoColor = new BABYLON.Color3(0.36, 0.22, 0.1);
+      else if (key === 'concrete') p.albedoColor = new BABYLON.Color3(0.45, 0.44, 0.42);
+      else if (key === 'plastic') p.albedoColor = new BABYLON.Color3(0.8, 0.35, 0.1);
+      else { p.albedoColor = new BABYLON.Color3(0.22, 0.22, 0.24); p.metallic = 0.7; p.roughness = 0.45; }
+      this.pieceMats.set(key, p); m = p;
+    }
+    return m;
+  }
+  private addShards(ds: unknown, p: { id: string; part: string; pieces: unknown[]; plan: { pieces: DebrisPiece[] } | null; origin: V3 }) {
+    if (!p.plan || p.plan.pieces.length === 0) return;
+    const mat = this.pieceMat(p.id, p.part), scene = this.scene, shadow = this.shadow;
+    const host: ShardHost = {
+      makeMesh: (name, data: MeshData) => {
+        const m = new BABYLON.Mesh(name, scene); const vd = new BABYLON.VertexData();
+        vd.positions = data.positions; vd.normals = data.normals; vd.indices = data.indices; vd.applyToMesh(m);
+        m.material = mat; m.isPickable = false; m.setEnabled(false); m.alwaysSelectAsActiveMesh = true;
+        return {
+          createInstance: (n: string) => {
+            const i = m.createInstance(n); i.isPickable = false; i.rotationQuaternion = BABYLON.Quaternion.Identity();
+            return { position: i.position, scaling: i.scaling, setRotation: (x: number, y: number, z: number, w: number) => i.rotationQuaternion!.set(x, y, z, w), setEnabled: (on: boolean) => i.setEnabled(on), dispose: () => i.dispose() };
+          },
+          dispose: () => m.dispose(),
+        };
+      },
+    };
+    const pieces = p.plan.pieces, view = new ShardView(host, pieces.map((q) => q.spec), p.origin, 'shard' + this.shards.length);
+    void shadow;
+    this.shards.push({ view, pieces, rot: pieces.map(() => BABYLON.Quaternion.Identity()), ang: pieces.map((q) => [...q.spec.angular] as V3), ds: ds as never });
+    this.shardStats.sets++; this.shardStats.pieces += pieces.length; this.shardStats.prototypes += view.stats.prototypes;
+    if (this.shards.length > 160) this.shards.shift()!.view.dispose();
+  }
+  private shardFrame(_ds: unknown, dt: number) {
+    for (let k = this.shards.length - 1; k >= 0; k--) {
+      const sh = this.shards[k]!; let alive = 0;
+      sh.pieces.forEach((q, i) => {
+        if (q.gone) { sh.view.hide(i); return; }
+        alive++;
+        const at = sh.ds.pieceAt(q); if (!at) return;
+        const w = sh.ang[i]!, wl = Math.hypot(w[0], w[1], w[2]);
+        if (!q.sleeping && wl > 1e-6) {
+          const dq = BABYLON.Quaternion.RotationAxis(new BABYLON.Vector3(w[0] / wl, w[1] / wl, w[2] / wl), wl * dt);
+          sh.rot[i] = dq.multiply(sh.rot[i]!);
+          if (at[1] <= 0.06) { w[0] *= 0.9; w[1] *= 0.9; w[2] *= 0.9; }
+        }
+        sh.view.place(i, at[0], at[1], at[2], [sh.rot[i]!.x, sh.rot[i]!.y, sh.rot[i]!.z, sh.rot[i]!.w]);
+        sh.view.fade(i, q.scale);
+      });
+      if (alive === 0) { sh.view.dispose(); this.shards.splice(k, 1); }
+    }
+  }
   private makeDebris(d: Debris): BABYLON.TransformNode | BABYLON.Mesh {
     const pivot = new BABYLON.TransformNode('debris' + d.id, this.scene); pivot.rotationQuaternion = BABYLON.Quaternion.Identity();
     const vis = d.node ? this.cars.get(d.ref) : undefined;
@@ -262,7 +334,7 @@ export class GameView {
       // follow the action a little: aim at the player's car or the villain's, whichever the sim says matters, within the frame
       const t = take.scene.vincent.veh.pos, p = take.scene.player.veh.pos, near = Math.abs(t[0] - s.target[0]) < Math.abs(p[0] - s.target[0]) ? t : p;
       const aim = new BABYLON.Vector3(near[0] - s.pos[0], near[1] + 1 - s.pos[1], near[2] - s.pos[2]);
-      const want = aim.length() > 4 && aim.normalize().dot(f) > 0.8 ? aim : f;
+      const want = f;
       cam.rotationQuaternion = lookQuat(want, BABYLON.Vector3.Up()); return;
     }
     const car = take.scene.player, v = car.veh;
@@ -281,11 +353,23 @@ export class GameView {
     const sh = this.shake * 0.05;
     cam.position.set(driver[0] + (Math.random() - 0.5) * sh, driver[1] + (Math.random() - 0.5) * sh, driver[2] + (Math.random() - 0.5) * sh);
   }
-  /** the set camera that saw the best moment of the take, for the verdict */
+  /** can a camera at `p` see the point `t` (no tree, post or building in the way)? one ray against the scene's meshes, the cars and the ground aside */
+  private clearView(p: V3, t: V3): boolean {
+    const o = new BABYLON.Vector3(...p), d = new BABYLON.Vector3(t[0] - p[0], t[1] - p[1], t[2] - p[2]), len = d.length(); if (len < 2) return true;
+    const ray = new BABYLON.Ray(o, d.scale(1 / len), len);
+    const hit = this.scene.pickWithRay(ray, (m) => m.isEnabled() && m.getTotalVertices() > 0 && !/terrain|chunk|sky|dome|^car:|piece|debris|surround/i.test(m.name) && !this.isCarMesh(m));
+    return !hit?.hit || hit.distance > len - 1.5;
+  }
+  private isCarMesh(m: BABYLON.Node): boolean { for (let n: BABYLON.Node | null = m; n; n = n.parent) if (n.name.startsWith('car:') || n.name.startsWith('debris')) return true; return false; }
+  /** the set camera for the verdict: the one that saw the best moment if it can see the action, else the nearest that can; each also from higher up (a crane); the ray test settles it */
   bestSetCamera(take: Take): SetCamera {
     const items = [...take.spec.items].filter((i) => i.camera).sort((a, b) => b.points - a.points);
-    const id = items[0]?.camera;
-    return SET_CAMERAS.find((c) => c.id === id) ?? SET_CAMERAS[0]!;
+    const focus: V3 = items[0]?.at ? [items[0].at[0], Math.max(1, items[0].at[1]), items[0].at[2]] : (() => { const p = take.scene.vincent.veh.pos; return [p[0], p[1] + 1, p[2]] as V3; })();
+    const pref = items[0]?.camera, list: SetCamera[] = [];
+    const ordered = [...SET_CAMERAS].sort((a, b) => (a.id === pref ? -1e9 : Math.hypot(a.pos[0] - focus[0], a.pos[2] - focus[2])) - (b.id === pref ? -1e9 : Math.hypot(b.pos[0] - focus[0], b.pos[2] - focus[2])));
+    for (const c of ordered) for (const up of [0, 3, 7]) list.push({ ...c, pos: [c.pos[0], c.pos[1] + up, c.pos[2]] });
+    for (const c of list) { const d = Math.hypot(c.pos[0] - focus[0], c.pos[2] - focus[2]); if (d > 6 && d < 330 && this.clearView(c.pos, focus)) return { ...c, target: focus }; }
+    return { ...SET_CAMERAS[0]!, pos: [focus[0] - 30, 8, 14], target: focus };
   }
   dispose() { this.vfxView.dispose?.(); }
   get stats() { return { cars: this.cars.size, fx: this.vfx.count, particles: this.vfx.particles, flames: this.flames.size }; }

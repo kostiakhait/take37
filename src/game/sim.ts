@@ -1,7 +1,9 @@
 // Copyright (C) Konstantin Khait, Squirrel Wisdom Academy, 2026
 // The simulation of scene 1 (no Babylon): cars on the engine's wheeled assembly (ray-cast wheels, crush zones, parts that come off), the street's solid things, props that are knocked or broken,
 // debris, damage and wrecks, and a stream of events for the score, the take and the view. The fixed step is 1/60 s with 4 sub-steps for the wheels.
-import { Vehicle, collideCars, hullContact, qAxisAngle, qRot, qConj, type RayCaster, type RayHit, type StrikeResult } from '@ferret/destruction/vehicle';
+import { Vehicle, hullContact, qAxisAngle, qRot, qConj, RESTING_SPEED, CAR_CONTACT_AREA, type RayCaster, type RayHit, type StrikeResult } from '@ferret/destruction/vehicle';
+import { DestructionService, type HitResult } from '@ferret/destruction/service';
+import { newLedger } from '@ferret/destruction/energy';
 import type { Vec3, Quat } from '@ferret/destruction/types';
 import { CAR_KINDS, SUBSTEPS, type KindId } from './config';
 import type { CarBuild } from './carspec';
@@ -96,6 +98,8 @@ export class Sim {
   /** things that stand in the way and are not props: the buildings */
   statics: Box[];
   private nextDebris = 1;
+  /** the engine's destruction module: every hit on a car, a prop or a station part goes through it (crush, glass, wood, stone; the pieces that fly come from it) */
+  readonly ds: DestructionService;
   /** the entity ids that became active (wreck, blast, fire) with the chain depth and the time: the chain reactions */
   readonly active = new Map<string, { depth: number; t: number }>();
   /** extra hooks: the fire module sees each hit */
@@ -104,12 +108,49 @@ export class Sim {
 
   constructor(readonly layout: Layout, seed: number) {
     this.ground = new StreetGround(layout.road); this.statics = layout.statics; this.rng = new Rng(seed);
+    this.ds = new DestructionService({ maxPieces: 400, maxBodies: 0 });
+    this.ds.groundY = 0.03;
+    // the film look: cars are physical in their energy but crumple a little deeper and throw more, bigger-and-smaller pieces that bounce and lie about; the street furniture takes the engine's hollywood preset
+    this.ds.book.defineStyle({ name: 'film', crush: { depthScale: 1.25 }, fracture: { piecesScale: 3, sizeSpread: 0.5, burstScale: 2.5 }, debris: { bounce: 0.4, life: 14, gravityScale: 0.85 } });
+    this.ds.scopes.setLevel('film');
     for (const p of layout.props) this.props.push({ def: p, id: p.id, state: 'whole', capacityJ: PROP_CAPACITY[p.kind] ?? 0, knocked: false });
     for (const s of layout.station.parts) {
       const cls: PropDef['cls'] = /^(Bin|NewsBox|IceChest|OilRack|TyreStack|AirStand|PropaneCage)/.test(s.id) ? 'knock' : 'anchored';
       const cap = /^CanopyColumn/.test(s.id) ? 250000 : /^Pump/.test(s.id) ? 7000 : /^Canopy$/.test(s.id) ? 1e12 : /^(Lamp|PriceSign|SignPost|VentPipes)/.test(s.id) ? 12000 : 3000;
       this.props.push({ def: { id: s.id, kind: s.id.replace(/_\d+$/, ''), mass: s.mass, box: s.box, cls }, id: s.id, state: 'whole', capacityJ: cap, knocked: false, station: { fuelL: s.fuelL, burnable: s.burnable, explosive: s.explosive, supports: s.supports, lit: s.lit } });
     }
+    for (const pr of this.props) this.defineProp(pr);
+  }
+
+  /** a prop or a station part as a destructible thing of the module: one part of the material it is made of, in the style of the street furniture (hollywood) */
+  private defineProp(pr: Prop) {
+    const b = pr.def.box, size: Vec3 = [Math.max(0.05, b.max[0] - b.min[0]), Math.max(0.05, b.max[1] - b.min[1]), Math.max(0.05, b.max[2] - b.min[2])];
+    const k = pr.def.kind;
+    let substance = 'steel-sheet', thickness = 0, fill = 0.25;
+    if (/^(Bench|Sawhorse|PicnicTable|CrateStack)/.test(k)) { substance = 'wood-oak'; fill = 0.5; }
+    else if (k === 'UtilityPole') { substance = 'wood-pine'; fill = 0.8; }
+    else if (k === 'PhoneBooth') { substance = 'glass-tempered'; thickness = 0.006; }
+    else if (k === 'Planter') { substance = 'concrete'; fill = 0.7; }
+    else if (/^(Cone|Bin|TrashBags|NewsBox|IceChest)/.test(k)) { substance = 'plastic-abs'; thickness = 0.003; }
+    else if (/^RoadSign|^PriceSign|^SignPost/.test(k)) { substance = 'aluminium-sheet'; thickness = 0.002; }
+    else if (k === 'Canopy') { substance = 'aluminium-sheet'; thickness = 0.002; fill = 0.1; }
+    else if (/^(Hydrant|LampAcorn|TrafficLight|Meter|Mailbox|CanopyColumn|Pump|CrowdBarrier|PropaneCage|OilRack|TyreStack|AirStand|Lamp|VentPipes)/.test(k)) { substance = 'steel-sheet'; thickness = /^(CrowdBarrier|Pump|Mailbox|PropaneCage)/.test(k) ? 0.003 : 0; fill = thickness ? 0.15 : 0.35; }
+    this.ds.defineThing({ id: pr.id, root: 'body', style: 'hollywood', parts: [{ id: 'body', substance, size, thickness, mass: pr.def.mass, fill }] });
+    const d = this.ds.thing(pr.id); d.frame = { position: [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2], rotation: [0, 0, 0, 1] };
+  }
+  /** a hit on a prop through the module: the pieces it throws, and whether the material gave way (wood, glass, stone) */
+  private propContact(pr: Prop, pt: Vec3, n: Vec3, speed: number, otherMass: number): HitResult | null {
+    return this.ds.contact(pr.id, { point: pt, normal: mul(n, -1), speed, otherMass, restitution: 0.2, area: 0.25, step: this.tick });
+  }
+  /** a car takes a hit through the module (the part under the point crumples, glass breaks, parts come off and their pieces fly); the result has the shape of a vehicle strike, the ledger is the whole thing's work for this hit */
+  strikeCar(c: Car, a: { point: Vec3; normal: Vec3; speed: number; otherMass: number; restitution: number; rigid?: boolean }): StrikeResult {
+    const d = this.ds.thing(c.id), before = d.ledger;
+    const r = this.ds.contact(c.id, { point: a.point, normal: a.normal, speed: a.speed, otherMass: a.otherMass, restitution: a.restitution, area: CAR_CONTACT_AREA, step: this.tick, rigidOther: a.rigid });
+    c.veh.wake();
+    if (!r) return { part: '', ledger: newLedger(0), stage: 'none', detached: [], events: [], load: 0 };
+    const now = d.ledger, led = newLedger(now.input - before.input);
+    led.crush = now.crush - before.crush; led.fracture = now.fracture - before.fracture; led.kinetic = now.kinetic - before.kinetic; led.heat = now.heat - before.heat; led.sound = now.sound - before.sound; led.residual = now.residual - before.residual;
+    return { part: r.record.part, ledger: led, stage: r.outcome.stage, detached: r.detached, events: r.events, load: r.load };
   }
 
   emit(e: SimEvent) { this.events.push(e); }
@@ -122,7 +163,9 @@ export class Sim {
     const c: Car = { id, kind: build.kind, role, build, veh: build.veh, ctl: { throttle: 0, brake: 0, steer: 0 }, damage: 0, wrecked: false, shown: 0, hitBy: null, hitAt: -99, occupied: false, ejected: false, fuelKg: k.fuelL * 0.74 };
     c.veh.place(origin, qAxisAngle([0, 1, 0], yaw));
     if (role === 'parked') { c.parkedAt = origin; c.ctl.brake = 0; }
-    this.cars.push(c); return c;
+    this.cars.push(c);
+    this.ds.add({ id, assembly: c.veh.assembly, zones: c.veh.zones, vehicle: c.veh });
+    return c;
   }
 
   /** the chain depth of an effect caused by `cause` now: one more than the cause if it was itself active in the last seconds, else 0 */
@@ -146,6 +189,7 @@ export class Sim {
     }
     this.collide();
     this.stepDebris(dt);
+    this.ds.advance(dt);
     for (const h of this.onStep) h(dt);
     this.updateDamage();
   }
@@ -177,7 +221,7 @@ export class Sim {
         if (a.veh.sleeping && b.veh.sleeping) continue;
         if (Math.abs(a.veh.pos[0] - b.veh.pos[0]) > 12 || Math.abs(a.veh.pos[2] - b.veh.pos[2]) > 12) continue;
         const wasA = len(a.veh.vel), wasB = len(b.veh.vel);
-        const r = collideCars(a.veh, b.veh, this.tick, i, j, 0.12);
+        const r = this.collidePair(a, b);
         if (r && r.speed > 1.2) {
           a.hitBy = b.id; a.hitAt = this.t; b.hitBy = a.id; b.hitAt = this.t;
           const at = r.a ? a.veh.pos : b.veh.pos, e = 0.5 * (a.veh.mass * b.veh.mass / (a.veh.mass + b.veh.mass)) * r.speed * r.speed;
@@ -190,6 +234,26 @@ export class Sim {
       this.collideStatics(a);
       this.collideProps(a);
     }
+  }
+  /** two cars meet: the impulse at the contact (momentum conserved, both turn), the overlap pushed apart by the inverse masses, and, above the resting speed, each car takes the hit of its side through the module */
+  private collidePair(a: Car, b: Car): { speed: number; a?: StrikeResult; b?: StrikeResult } | null {
+    const A = a.veh, B = b.veh, c = hullContact(A, B);
+    if (!c) return null;
+    const n = c.normal, vrel = sub(B.velocityAt(c.point), A.velocityAt(c.point)), vn = dot(vrel, n);
+    const out: { speed: number; a?: StrikeResult; b?: StrikeResult } = { speed: Math.max(0, -vn) };
+    const ia = 1 / A.mass, ib = 1 / B.mass, ra = sub(c.point, A.pos), rb = sub(c.point, B.pos);
+    const ka = dot(cross(A.invInertia(cross(ra, n)), ra), n), kb = dot(cross(B.invInertia(cross(rb, n)), rb), n);
+    if (vn < 0) {
+      const restitution = 0.12, j = (-(1 + restitution) * vn) / (ia + ib + ka + kb), speed = -vn;
+      A.applyImpulse(mul(n, -j), c.point); B.applyImpulse(mul(n, j), c.point);
+      if (speed > RESTING_SPEED) {
+        out.a = this.strikeCar(a, { point: c.point, normal: mul(n, -1), speed, otherMass: B.mass, restitution });
+        out.b = this.strikeCar(b, { point: c.point, normal: n, speed, otherMass: A.mass, restitution });
+      }
+    }
+    const total = ia + ib;
+    A.pos = sub(A.pos, mul(n, (c.depth * ia) / total)); B.pos = add(B.pos, mul(n, (c.depth * ib) / total));
+    return out;
   }
   private afterStrike(c: Car, s: StrikeResult, other: string, speed: number) {
     for (const id of s.detached) this.emit({ t: this.t, type: 'detach', car: c.id, part: id, at: [...c.veh.pos] as Vec3 });
@@ -218,7 +282,7 @@ export class Sim {
     if (vtl > 1e-3) { const jt = Math.min(mu * j, (vtl * v.mass) / 2); v.applyImpulse(mul(vt, -jt / vtl), pt); }
     const speed = -vn;
     if (speed > 1.2) {
-      const s = v.strike({ point: pt, normal: n, speed, otherMass: otherMass, restitution, step: this.tick, entity: this.cars.indexOf(c) });
+      const s = this.strikeCar(c, { point: pt, normal: n, speed, otherMass, restitution, rigid: otherId === 'building' });
       c.hitBy = otherId; c.hitAt = this.t;
       this.emit({ t: this.t, type: 'impact', a: c.id, b: otherId, at: [...pt] as Vec3, speed, energy: 0.5 * Math.min(v.mass, otherMass) * speed * speed });
       this.afterStrike(c, s, otherId, speed);
@@ -252,13 +316,25 @@ export class Sim {
     const vnn = Math.max(vn, 0.4);
     const mc = v.mass, mp = pr.def.mass, at = mid(pr.def.box), cause = c.id, depth0 = this.depthOf(cause);
     const mu = (mc * mp) / (mc + mp), E = 0.5 * mu * vnn * vnn;
+    // the module takes the hit on the prop first: the pieces it throws (splinters, shards, chips) and whether its material gave way (a bench's planks, a pane, a planter)
+    const hr = this.propContact(pr, pt, n, vnn, mc);
+    if (hr && (hr.outcome.broken || hr.detached.length > 0) && pr.state === 'whole') {
+      const L = hr.outcome.ledger, absorbed = L.crush + L.fracture + L.heat + L.sound;
+      const vAfter = Math.sqrt(Math.max(0, vn * vn - (2 * absorbed) / mc));
+      v.applyImpulse(mul(n, mc * Math.max(0, vn - vAfter) * 0.98), pt);
+      if (pr.def.cls === 'anchored') c.veh.pos = add(v.pos, mul(n, Math.min(depth, 0.3)));
+      pr.state = 'gone'; pr.knocked = true;
+      this.emit({ t: this.t, type: 'prop', id: pr.id, kind: pr.def.kind, at: mid(pr.def.box), how: 'broken', depth: depth0 });
+      this.markActive(pr.id, depth0);
+      return;
+    }
     if (pr.def.cls === 'knock') {
       // a light thing is thrown: the momentum goes to it, the car loses what it takes
       const vp = ((1.3) * mc * vnn) / (mc + mp);
       const dir = mul(n, -1);
       v.applyImpulse(mul(n, mp * vp * 0.9), pt);
       this.throwProp(pr, add(mul(dir, vp), [this.rng.range(-1, 1), 1.5 + 0.2 * vp, this.rng.range(-1, 1)]), c.id, 'knocked', depth0);
-      if (mp > 60 && E > 800) { const s = v.strike({ point: pt, normal: n, speed: vn, otherMass: mp, restitution: 0.2, step: this.tick, entity: this.cars.indexOf(c) }); this.afterStrike(c, s, pr.id, vn); }
+      if (mp > 60 && E > 800) { const s = this.strikeCar(c, { point: pt, normal: n, speed: vn, otherMass: mp, restitution: 0.2 }); this.afterStrike(c, s, pr.id, vn); }
       return;
     }
     // anchored: the base holds up to its capacity; beyond it the thing gives way and the car loses that work
@@ -269,7 +345,7 @@ export class Sim {
     const vAfter = Math.sqrt(Math.max(0, vn * vn - (2 * pr.capacityJ) / mc));
     v.applyImpulse(mul(n, mc * (vn - vAfter) * 0.98), pt);
     c.veh.pos = add(v.pos, mul(n, Math.min(depth, 0.3)));
-    const s = v.strike({ point: pt, normal: n, speed: Math.min(vn, 4), otherMass: mp, restitution: 0.1, step: this.tick, entity: this.cars.indexOf(c) }); this.afterStrike(c, s, pr.id, vn);
+    const s = this.strikeCar(c, { point: pt, normal: n, speed: Math.min(vn, 4), otherMass: mp, restitution: 0.1 }); this.afterStrike(c, s, pr.id, vn);
     const vp = Math.min(vn * 0.6, 12);
     this.throwProp(pr, add(mul(mul(n, -1), vp), [0, 1 + 0.15 * vp, 0]), c.id, 'broken', depth0);
     void at;
@@ -310,7 +386,7 @@ export class Sim {
 
   private updateDamage() {
     for (const c of this.cars) {
-      const k = CAR_KINDS[c.kind], led = c.veh.ledger;
+      const k = CAR_KINDS[c.kind], led = this.ds.thing(c.id).ledger;
       c.damage = (led.crush + led.fracture) / k.wreckJ;
       const out = c.veh.wheels.filter((w) => !w.attached).length;
       const rolled = c.veh.tilt() > 1.3 && len(c.veh.vel) < 6 && c.damage > 0.25;

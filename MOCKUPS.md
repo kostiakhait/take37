@@ -14,7 +14,7 @@ Every replacement of the playable scene (src/game, src/play.ts) is listed here w
 | Sounds | `src/game/audio.ts` | engine, horn, siren, crashes and blasts are synthesized (WebAudio) | recorded sounds through the engine's audio service |
 | Director's reaction | `directorSays` in `src/game/take.ts`, `src/game/hud.ts` | text caption only | voice (planned), the text stays as subtitles |
 | Pedestrians | none in the scenario | none | none |
-| Dents of the car bodies | `src/game/view.ts` | the damage shows as parts that come off, the vehicle's tilt and the `_damaged` model for traffic cars; the engine's dent lattice (`@ferret/destruction/view-dents`) is not applied to the model meshes | apply `DentCage` to the part meshes of the near cars |
+| Dents of the car bodies | `src/game/view.ts` | DONE in the game: the engine's dent lattice (`DentCage` of `@ferret/destruction/view-dents`) is on the cars' meshes (browser run: dents counted on the tanker, parked and traffic cars); the damage also shows as parts that come off and the `_damaged` model for traffic cars | none needed |
 
 ## The station on the street
 
@@ -26,3 +26,5 @@ Every replacement of the playable scene (src/game, src/play.ts) is listed here w
 - The line fuel of a pump is 600 kg (`PUMP_LINE_KG`), the blast yield of a fuel fire is 2 percent (`BLAST_YIELD`), set in `src/game/fire.ts`.
 - The engine's `Vehicle` brakes all wheels together: the handbrake locks all four (no rear-only lock).
 - The throttle is limited by a traction factor (speed and yaw rate) in `src/game/sim.ts`, because the engine's vehicle spins at full throttle above 15 m/s.
+
+| Break pieces of props and cars | `src/game/view.ts` (ShardView) | the module's pieces (glass shards, splinters, chips, sheet) are drawn as instances of convex meshes by material colour (glass clear, wood brown, concrete grey, plastic orange, metal dark); no art model of the broken thing | per-prop broken kits (`_broken` glb of bench, phone booth, planter, pump, canopy sections), `Pump_*_damaged`, `Canopy_part_*` pieces in the station glb |
