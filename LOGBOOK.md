@@ -18,3 +18,4 @@ Every operation made to create the game: local time and description.
 | 2026-11-12 00:02 | Took the 1987 Corvette C4 convertible (Vincent's car) and the 1987 police sedan (Matthew's car) from the library into assets/borrowed (4 files: full and reduced detail of each). Origin: заимствовано из Феррета. |
 | 2026-11-12 00:02 | Decided to take every usable material and texture from the library; the rest of the scene-1 models are drawn for the game. |
 | 2026-11-12 00:02 | Launched three modelling tasks for scene 1: the street kit with the gas station, the fuel tanker, and the civilian traffic cars. |
+| 2026-11-12 00:08 | Started the characters. Chose to build all six on the library's character modules: a preset face and body for each, strand hair, and clothes sewn to the body. Started the first three face-and-body exports (Edward, Matthew, Emily) at lowered priority. |
