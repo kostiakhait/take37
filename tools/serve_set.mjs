@@ -4,6 +4,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { brotliOf, brotliable } from './brotli.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url)), repo = path.resolve(here, '..');
 const FERRET = process.env.FERRET_DIR ?? 'D:/REPO/ferret', OUT = process.env.TAKE37_OUT ?? 'D:/temp/take37/land/dist', port = +(process.argv[2] ?? 4370);
@@ -18,8 +19,11 @@ http.createServer((req, res) => {
     if (!fs.existsSync(file) || !fs.statSync(file).isFile()) continue;
     const st = fs.statSync(file), etag = `"${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"`;   // a reload revalidates and gets a 304 for the unchanged glb files
     if (req.headers['if-none-match'] === etag) { res.writeHead(304, { ETag: etag, 'Cache-Control': 'no-cache' }).end(); return; }
-    res.writeHead(200, { 'Content-Type': types[path.extname(file)] ?? 'application/octet-stream', 'Content-Length': st.size, 'Cache-Control': 'no-cache', ETag: etag });
-    fs.createReadStream(file).pipe(res); return;
+    const head = { 'Content-Type': types[path.extname(file)] ?? 'application/octet-stream', 'Cache-Control': 'no-cache', ETag: etag };
+    let src = file;
+    if (process.env.TAKE37_BR === '1' && /\bbr\b/.test(req.headers['accept-encoding'] ?? '') && brotliable(file)) { src = brotliOf(file); head['Content-Encoding'] = 'br'; head.Vary = 'Accept-Encoding'; }   // as the preview server does (nginx brotli_static)
+    head['Content-Length'] = fs.statSync(src).size; res.writeHead(200, head);
+    fs.createReadStream(src).pipe(res); return;
   }
   res.writeHead(404).end('not found');
 }).listen(port, () => console.log(`set scene on http://localhost:${port}/`));

@@ -10,6 +10,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawnSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { brotliOf, brotliable } from './brotli.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url)), repo = path.resolve(here, '..');
 const FERRET = process.env.FERRET_DIR ?? 'D:/REPO/ferret', ROOT = 'D:/temp/take37/deploy', OUT = process.env.TAKE37_OUT ?? `${ROOT}/dist`, STAGE = `${ROOT}/site`;
@@ -47,6 +48,8 @@ const urls = JSON.parse(fs.readFileSync(listFile, 'utf8')).map((u) => (u === '/'
 const files = new Map();
 for (const u of urls) { const f = resolveUrl(u); if (f) files.set(u.slice(1), f); else console.warn('missing for', u); }
 for (const f of ['index.html', 'main.js']) if (fs.existsSync(path.join(OUT, f))) files.set(f, path.join(OUT, f));
+// brotli copies next to the files (nginx brotli_static serves <file>.br to clients that accept br; cached by content in D:/temp/take37/brcache)
+for (const [rel, f] of [...files]) if (brotliable(f)) files.set(rel + '.br', brotliOf(f));
 
 // 3. diff against the server by size + sha1 of the files (remote manifest), upload the changed ones as one tar stream
 const cfg = JSON.parse(fs.readFileSync(`${ROOT}/host.json`, 'utf8'));

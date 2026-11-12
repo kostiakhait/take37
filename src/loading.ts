@@ -3,6 +3,7 @@
 //  - every car glb (full and reduced) starts loading at once, so that the downloads and the texture decoding overlap; GameView's own calls then take the running load by its URL;
 //  - the damaged variants are only needed at the first wreck, so GameView is told they are absent while the page loads, and they are loaded behind it and put into its packs afterwards.
 import { CAR_KINDS, type KindId } from './game/config';
+import './perf';   // the ?perf=1 overlay and the render-scale governor install themselves when the page is ready
 
 type Loader = typeof BABYLON.SceneLoader.LoadAssetContainerAsync;
 interface Packs { packs: Map<string, { damaged?: BABYLON.AssetContainer }> }
