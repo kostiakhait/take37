@@ -5,7 +5,7 @@ const sharp = createRequire(import.meta.url)('D:/REPO/ferret/node_modules/.pnpm/
 const ell = (x, y, cx, cy, rx, ry, soft) => { const d = Math.hypot((x - cx) / rx, (y - cy) / ry); return Math.max(0, Math.min(1, (1 - d) / soft)) }
 /** the shaved zone in 1024-px texture coordinates: 0..1 */
 function shaveMask(X, Y) {
-  let m = ell(X, Y, 520, 650, 380, 215, 0.9)                       // lower face, jaw, sideburns
+  let m = ell(X, Y, 520, 650, 400, 235, 0.65)                       // lower face, jaw, sideburns
   m *= 1 - ell(X, Y, 512, 600, 118, 52, 0.4)                        // lips
   m *= 1 - ell(X, Y, 512, 515, 95, 38, 0.4)                         // nostrils
   return Math.max(0, m)
@@ -28,7 +28,7 @@ export async function shave(png, { strength = 0.95, keepDetail = 0.3 } = {}) {
     if (m <= 0) continue
     const i = (y * W + x) * 4
     for (let k = 0; k < 3; k++) {
-      const hf = f.data[i + k] - mid[i + k], tone = ref[k] + (low[i + k] - ref[k]) * 0.8
+      const hf = f.data[i + k] - mid[i + k], tone = ref[k] + (low[i + k] - ref[k]) * 0.4
       out[i + k] = Math.max(0, Math.min(255, f.data[i + k] * (1 - m) + (tone + hf * keepDetail) * m))
     }
   }
