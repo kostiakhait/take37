@@ -113,3 +113,5 @@ All vessels from the library (заимствовано из Феррета). Lib
 | Boat | 6 | sink from bullets; blown to pieces by the bazooka |
 
 Score: mostly ships destroyed (yachts and boats count; destroyers count for fires and explosions staged on them), less for "killed" henchmen.
+
+Henchmen "die" both ways: shot ones fall (onto the deck or overboard); blasts throw them as ragdolls. They stand on decks on engine Walkers physics (ferret-physics-walkers), so decks that tilt or sink carry or drop them correctly.
