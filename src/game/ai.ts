@@ -106,7 +106,9 @@ export function vincentDriver(plan: VincentPlan, station: { islandsX: number[]; 
           const other = gapAhead(c, sim, -lane, 1, 400), ttc = (g: { gap: number; speed: number }) => g.gap / Math.max(0.5, v - g.speed);
           // from the oncoming lane he goes back as soon as that is the safer lane; into it only when it is clear for long enough
           const back = lane > 0 && ttc(other) > 1.2 * ttc(gh);
-          if (back || (laneFree(c, sim, -lane, v) && other.gap > gh.gap + 15)) { lane = -lane; laneClock = 2.4; } else laneClock = 0.15;
+          // into the oncoming lane only if the pass can be finished before what comes the other way arrives: the time to get by the slow car (its gap plus a car length over the closing speed, and the return), times the closing speed of the two
+          const passT = (gh.gap + 16) / Math.max(1, v - Math.max(0, gh.speed)) + 2, roomOk = lane > 0 || other.gap > (v - Math.min(0, other.speed)) * passT + 25;
+          if (back || (roomOk && laneFree(c, sim, -lane, v) && other.gap > gh.gap + 15)) { lane = -lane; laneClock = 2.4; } else laneClock = 0.15;
         }
         else laneClock = 0.2;
       }

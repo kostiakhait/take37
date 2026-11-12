@@ -138,6 +138,24 @@ export class Sim {
     this.ds.defineThing({ id: pr.id, root: 'body', style: 'hollywood', parts: [{ id: 'body', substance, size, thickness, mass: pr.def.mass, fill }] });
     const d = this.ds.thing(pr.id); d.frame = { position: [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2], rotation: [0, 0, 0, 1] };
   }
+  /** shop windows: the street art has them inside the merged building meshes, so the game lays 2.4 m panes of 6 mm tempered glass along the street face of every building box (ground floor, 0.4 to 2.6 m); a pane is made as a module thing at the first hit and the module decides what the car's energy does to it */
+  private panes = new Map<string, boolean>();
+  private breakWindow(c: Car, b: Box, pt: Vec3, speed: number) {
+    const faceZ = (b.min[2] + b.max[2]) / 2 > 0 ? b.min[2] : b.max[2];
+    if (Math.abs(pt[2] - faceZ) > 1.6 || pt[1] < 0.1 || pt[1] > 3.2 || pt[0] < b.min[0] + 0.5 || pt[0] > b.max[0] - 0.5) return;
+    const idx = Math.floor((pt[0] - b.min[0]) / 2.6), cx = b.min[0] + idx * 2.6 + 1.3, id = `Window_${Math.round(b.min[0])}_${Math.round(faceZ * 10)}_${idx}`;
+    if (this.panes.get(id) === false) return;
+    if (!this.panes.has(id)) {
+      this.ds.defineThing({ id, root: 'glass', parts: [{ id: 'glass', substance: 'glass-tempered', size: [2.4, 2.1, 0.006], thickness: 0.006, mass: 2.4 * 2.1 * 0.006 * 2500 }] });
+      const d = this.ds.thing(id); d.frame = { position: [cx, 1.5, faceZ], rotation: [0.7071068, 0, 0, 0.7071068] }; this.panes.set(id, true);
+    }
+    const n: Vec3 = [0, 0, faceZ > 0 ? -1 : 1];
+    const r = this.ds.contact(id, { point: [cx + Math.max(-1, Math.min(1, pt[0] - cx)), Math.max(0.5, Math.min(2.5, pt[1])), faceZ], normal: mul(n, -1), speed, otherMass: c.veh.mass, restitution: 0.2, area: 0.6, step: this.tick });
+    if (r && r.outcome.broken) {
+      this.panes.set(id, false);
+      this.emit({ t: this.t, type: 'prop', id, kind: 'Window', at: [cx, 1.5, faceZ], how: 'broken', depth: this.depthOf(c.id) });
+    }
+  }
   /** a hit on a prop through the module: the pieces it throws, and whether the material gave way (wood, glass, stone) */
   private propContact(pr: Prop, pt: Vec3, n: Vec3, speed: number, otherMass: number): HitResult | null {
     return this.ds.contact(pr.id, { point: pt, normal: mul(n, -1), speed, otherMass, restitution: 0.2, area: 0.25, step: this.tick });
@@ -294,7 +312,7 @@ export class Sim {
     for (const b of this.statics) {
       if (p[0] < b.min[0] - 6 || p[0] > b.max[0] + 6 || p[2] < b.min[2] - 6 || p[2] > b.max[2] + 6) continue;
       const k = hullVsBox(c.veh, b);
-      if (k) this.resolveRigid(c, k.normal, k.depth, k.point, 'building');
+      if (k) { const sp = this.resolveRigid(c, k.normal, k.depth, k.point, 'building'); if (sp > 2.5) this.breakWindow(c, b, k.point, sp); }
     }
   }
   private collideProps(c: Car) {

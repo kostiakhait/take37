@@ -255,6 +255,8 @@ export class FireWorld {
     for (const s of this.stores) {
       if (s === t || s.out) continue;
       const p = s.at(), r = Math.hypot(p[0] - at[0], p[1] - at[1], p[2] - at[2]);
+      // the blast wave splits the thin shell of a neighbouring compartment (aluminium, about 35 kPa): the fuel is thrown out as a spray and the same spray-cloud rule gives its own blast 3 to 7 s later
+      if (s.what === 'tanker' && !s.leaking && r > 0.5 && blastAt(r, tnt).overpressure > 35e3) this.rupture(s, 20, 1e6);
       if (r < fb && (s.leaking || s.what === 'pump' || s.what === 'canopy' || s.what === 'car')) { if (s.what === 'pump') s.leaking = true; this.ignite(s, depth + 1); }
       if (s.wall && r < fb) s.wall.power = ENGULF_FLUX * s.exposed;
     }
