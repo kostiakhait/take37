@@ -56,3 +56,12 @@ export function buildTanker(infos: NodeInfo[]): CarBuild {
   });
   return { veh, block: null, kind: 'tanker', length: size[0], width: size[2], height: all.max[1], wheelRadius: 0.52 };
 }
+
+/**
+ * The police cab (assets/borrowed/crown_victoria_cpd87.glb, art/cars/police): where the driver's eyes are and where the steering wheel is, in the car's frame (x forward, y up, z toward the driver's side).
+ * The wheel is the node 'SteeringWheel': its origin is the hub on the column axis, it turns about `axis` (from the dash toward the driver).
+ */
+export const POLICE_CAB = {
+  eye: [-0.22, 1.14, 0.37] as Vec3,
+  wheel: { node: 'SteeringWheel', hub: [0.25, 0.80, 0.37] as Vec3, axis: [-0.6691, 0.7431, 0] as Vec3, radius: 0.19, lock: 3.0 * Math.PI },
+};
