@@ -137,3 +137,9 @@ Order of work (owner's order 2026-11-12): NO work on scene 2 until scene 1 is fi
 Each scene consists of a prologue, the playable part and an epilogue. The prologue and epilogue are shot from the third person and driven by the AI; the playable part is from Matthew's eyes and driven by the player.
 
 Scene 1: prologue: Matthew gets up from his chair (the prop is already in place), Vincent gets up from his chair, both walk to their cars and get in; each take they walk a little differently (variation per take). Epilogue: Matthew comes out of the ruins of the street and walks back to his chair. The playable part is built first; prologue and epilogue after it.
+
+## Scene assembly (owner's task to the lead, 2026-11-12)
+
+When the prerequisites are met, the lead assembles the scene 1 play build from the assets as they are, then changes it incrementally as assets and mechanics improve, and shows the renders of each assembly to the owner. Tool: `node tools/assemble_scene.mjs [label]`: own build and port, fixed views (cab, street, the station and the tanker, high views, the chase on the autopilot), renders and `manifest.json` (asset versions, renderer string, console messages) in `D:/temp/take37/assembly/<stamp>/`.
+
+Prerequisites (all must hold): (1) every asset file of the manifest exists and the cars were accepted after the agent's report; (2) the page loads without errors on the RTX 3050 and the cab frame is readable (the cab interior is lit, the left pillar is not black); (3) the page runs fast enough for the stills to be taken in a few minutes (the terrain and weather agent's frame-rate work); (4) the verdict camera is not blocked.
