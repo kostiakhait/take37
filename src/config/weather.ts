@@ -28,7 +28,7 @@ export const WEATHER: { active: string; presets: Record<string, WeatherPreset> }
     clear: {
       description: 'clear sky, light breeze',
       base: 'clear', state: { wind: 2.5, windDir: 70, gustiness: 0.15, cloudCover: 0.04, temperature: 24 },
-      hour: 12.2, sunRoll: 0, visibilityKm: 38, cumulus: 0.2,
+      hour: 14.6, sunRoll: 55, visibilityKm: 38, cumulus: 0.2,
     },
     'light-cloud': {
       description: 'light cloud, a fresh breeze',

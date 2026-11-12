@@ -69,7 +69,18 @@ uniform sampler2D wsTex;
 attribute vec4 color;
 #endif
 #ifdef WSBAKED
-attribute float sway; attribute float flutter; attribute float phase; attribute float level; attribute vec3 pivot;
+#ifndef UV2
+attribute vec2 uv2;
+#endif
+#ifndef UV3
+attribute vec2 uv3;
+#endif
+#ifndef UV4
+attribute vec2 uv4;
+#endif
+#ifndef UV5
+attribute vec2 uv5;
+#endif
 #endif
 float wsHash(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 `;
@@ -99,11 +110,13 @@ const BODY = `
   } else if (wsKind < 2.5) {
     #ifdef WSBAKED
     // the baked wind data of the model (art/street/TREES.md): _SWAY the lever arm, _FLUTTER the leaf weight, _PHASE per branch, _LEVEL trunk/limb/branch/twig/leaf, _PIVOT the branch base
+    float sway = uv2.x, flutter = uv2.y, phase = uv3.x, level = uv4.x;
+    vec3 pivot = vec3(uv4.y, uv5.x, uv5.y);
     float bw = pow(sway, 1.6);
     float fq = level < 0.5 ? 0.12 : level < 1.5 ? 0.5 : level < 2.5 ? 0.9 : 1.4;
-    float bt = wsT * fq * 6.2831 + phase * 6.2831;
+    float bt = wsT * fq * 6.2831 + phase * 6.2831 + dot(pivot.xz, vec2(0.173, 0.119));
     float ang = clamp(wsU * 0.006, 0.0, 0.16) * bw * (0.55 + 0.45 * sin(bt)) * wsC.w;
-    vec3 pw = (finalWorld * vec4(pivot, 1.0)).xyz;
+    vec3 pw = pivot;   // the pivots are in world space: the parts are merged into the world's frame
     vec3 axis = vec3(wsDir.y, 0.0, -wsDir.x);
     vec3 rel = worldPos.xyz - pw;
     float ca = cos(ang), sa = sin(ang);
@@ -162,12 +175,12 @@ export function applyWindSway(scene: BABYLON.Scene, field: WindField, rules: Swa
     prepareDefines(defines: BABYLON.MaterialDefines, _s: BABYLON.Scene, mesh: BABYLON.AbstractMesh) {
       defines['WSWAY'] = true;
       const src = mesh instanceof BABYLON.InstancedMesh ? mesh.sourceMesh : mesh;
-      defines['WSBAKED'] = this.mode.kind === 'tree' && src.isVerticesDataPresent('sway');
+      defines['WSBAKED'] = this.mode.kind === 'tree' && src.isVerticesDataPresent(BABYLON.VertexBuffer.UV5Kind);
       defines['WSCOLOR'] = !!this.mode.weightsFromColor && src.isVerticesDataPresent(BABYLON.VertexBuffer.ColorKind);
     }
     getAttributes(attributes: string[], _s: BABYLON.Scene, mesh: BABYLON.AbstractMesh) {
       const src = mesh instanceof BABYLON.InstancedMesh ? mesh.sourceMesh : mesh;
-      if (this.mode.kind === 'tree' && src.isVerticesDataPresent('sway')) for (const k of ['sway', 'flutter', 'phase', 'level', 'pivot']) if (!attributes.includes(k)) attributes.push(k);
+      if (this.mode.kind === 'tree' && src.isVerticesDataPresent(BABYLON.VertexBuffer.UV5Kind)) for (const k of ['uv2', 'uv3', 'uv4', 'uv5']) if (!attributes.includes(k)) attributes.push(k);
       if (this.mode.weightsFromColor && src.isVerticesDataPresent(BABYLON.VertexBuffer.ColorKind) && !attributes.includes('color')) attributes.push('color');
     }
     getSamplers(samplers: string[]) { samplers.push('wsTex'); }
@@ -196,34 +209,4 @@ export function applyWindSway(scene: BABYLON.Scene, field: WindField, rules: Swa
   const one = (m: BABYLON.Material) => { const hit = compiled.find(x => x.re.test(m.name)); if (hit) add(m, hit.r); };
   for (const m of scene.materials) one(m);
   return { get materials() { return taken.size; }, add, dispose() { for (const p of taken.values()) { try { p.dispose(); } catch { /* gone */ } } taken.clear(); } };
-}
-
-/**
- * Reads the wind data baked into the models (art/street/TREES.md: `_SWAY`, `_FLUTTER`, `_PHASE`, `_LEVEL`, `_PIVOT`), which Babylon's glTF loader does not keep, from the glb itself, and puts it on
- * the loaded meshes as vertex buffers `sway`, `flutter`, `phase`, `level`, `pivot` (the mesh of a node is found by the node's name; a node with several primitives has the loader's
- * `name_primitiveN` meshes). Returns how many meshes got the data.
- */
-export async function attachBakedWind(scene: BABYLON.Scene, url: string): Promise<number> {
-  const buf = await (await fetch(url)).arrayBuffer(), dv = new DataView(buf), jl = dv.getUint32(12, true);
-  const gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, jl))), binStart = 20 + jl + 8;
-  const names: Record<string, [string, number]> = { _SWAY: ['sway', 1], _FLUTTER: ['flutter', 1], _PHASE: ['phase', 1], _LEVEL: ['level', 1], _PIVOT: ['pivot', 3] };
-  const read = (ai: number): Float32Array => {
-    const a = gltf.accessors[ai], v = gltf.bufferViews[a.bufferView], n = a.count * ({ SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 } as Record<string, number>)[a.type], off = binStart + (v.byteOffset ?? 0) + (a.byteOffset ?? 0), out = new Float32Array(n);
-    const stride = v.byteStride, comps = n / a.count;
-    for (let i = 0; i < a.count; i++) for (let c = 0; c < comps; c++) out[i * comps + c] = dv.getFloat32(off + (stride ? i * stride : i * comps * 4) + c * 4, true);
-    return out;
-  };
-  let done = 0;
-  for (const node of gltf.nodes as Array<{ name: string; mesh?: number }>) {
-    if (node.mesh === undefined) continue;
-    const prims = gltf.meshes[node.mesh].primitives as Array<{ attributes: Record<string, number> }>;
-    prims.forEach((pr, i) => {
-      if (!('_SWAY' in pr.attributes)) return;
-      const mesh = scene.getMeshByName(prims.length > 1 ? `${node.name}_primitive${i}` : node.name);
-      if (!mesh || mesh.getTotalVertices() === 0) return;
-      for (const [attr, [kind, size]] of Object.entries(names)) if (attr in pr.attributes) mesh.setVerticesData(kind, read(pr.attributes[attr]), false, size);
-      done++;
-    });
-  }
-  return done;
 }

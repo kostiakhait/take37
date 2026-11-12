@@ -10,12 +10,14 @@ import { GrassView, WeatherService, cloudFieldFor, terrainGround } from '@ferret
 import { PLATFORM, STREET, platformEdgeDistance } from '../config/stage';
 import { WEATHER, weatherPreset, type WeatherPreset } from '../config/weather';
 import { DIRT_ROADS, LOOKS, makeLandscape } from '../land/relief';
-import { GENERATORS, OAKS, SHRUBS, STONES } from '../land/plants';
+import { GENERATORS, OAKS, SHRUBS, STONES, STONE_GENERATORS } from '../land/plants';
 import { plantMaterial } from '../land/plant-material';
+import { buildSurround } from '../land/surround';
 import { terrainMaterial } from '../land/terrain-material';
+import { ROADS_BOX, roadsTexture } from '../land/roads-map';
 import { buildPowerLines, type LineSpec } from '../land/powerline';
 import { SkyDome, lookOf, type Look } from '../weather/sky';
-import { WindField, applyWindSway, attachBakedWind, type SwayRule } from '../weather/wind-sway';
+import { WindField, applyWindSway, type SwayRule } from '../weather/wind-sway';
 import { Litter } from '../weather/litter';
 import { Flag, stripesTexture } from '../weather/flags';
 
@@ -31,6 +33,22 @@ export interface SetHandle {
   views(): Record<string, { position: [number, number, number]; target: [number, number, number]; fov?: number }>;
   goto(view: string): Promise<void>; settle(frames?: number): Promise<void>;
   stats(): Record<string, number | string>;
+  /** the sun's cascaded shadow generator (null in the light picture), for a game to add its own casters */
+  shadow: BABYLON.CascadedShadowGenerator | null;
+  /** with `keepProps`: the `DEST_<Kind>_<NNN>` nodes of the street, whole and with their level of detail switching (name to node) */
+  propNodes: Map<string, BABYLON.TransformNode>;
+  /** the street's loaded meshes and nodes, as the loader gave them (merged parts are gone) */
+  street: BABYLON.ISceneLoaderAsyncResult;
+}
+
+/** what a game may ask of the set while it is built */
+export interface SetOptions {
+  /** `'lite'` (default): the light gas station of `art/gas-station`; `'none'`: no station, the game places its own at `GasStation_Anchor` */
+  gas?: 'none' | 'lite';
+  /** the `DEST_*` props of the street stay separate nodes (not merged into the cells), with their level of detail kept */
+  keepProps?: boolean;
+  /** called with the street's loaded result before anything is merged or moved: a game may rename, hide or take nodes here */
+  onStreetLoaded?: (street: BABYLON.ISceneLoaderAsyncResult, scene: BABYLON.Scene) => void;
 }
 
 const base = (name: string) => name.replace(/_LOD[01]$/, '');
@@ -46,7 +64,7 @@ function cachedHeight(g: Ground) {
   };
 }
 
-export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, progress: (p: number, text: string) => void = () => {}): Promise<SetHandle> {
+export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, progress: (p: number, text: string) => void = () => {}, options: SetOptions = {}): Promise<SetHandle> {
   const game = createGame({ canvas, storageKey: 'take37-set', input: { actions: {}, bindings: { keyboard: {}, gamepad: {}, touch: {}, console: {} } as never } });
   const { world, scene, engine } = game;
   const lite = q.get('lite') === '1';
@@ -83,7 +101,7 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
   camera.attachControl(canvas, true); scene.activeCamera = camera; game.display.trackCamera(camera);
   if (!lite) {
     const pipe = new BABYLON.DefaultRenderingPipeline('post', true, scene, [camera]);
-    pipe.samples = 4; pipe.fxaaEnabled = true; pipe.bloomEnabled = true; pipe.bloomThreshold = 0.85; pipe.bloomWeight = 0.18; pipe.bloomKernel = 48; pipe.sharpenEnabled = true; pipe.sharpen.edgeAmount = 0.2;
+    pipe.samples = 4; pipe.fxaaEnabled = false; pipe.bloomEnabled = true; pipe.bloomThreshold = 0.88; pipe.bloomWeight = 0.16; pipe.bloomKernel = 32; pipe.bloomScale = 0.5; pipe.sharpenEnabled = false;
     pipe.imageProcessingEnabled = true;
   }
 
@@ -91,12 +109,13 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
   const dome = new SkyDome(scene);
   const hemi = new BABYLON.HemisphericLight('sky-light', new BABYLON.Vector3(0, 1, 0), scene);
   const sun = new BABYLON.DirectionalLight('sun', new BABYLON.Vector3(-0.3, -0.8, -0.4), scene);
-  sun.shadowMinZ = 1; sun.shadowMaxZ = 900;
+  sun.shadowMinZ = 1; sun.shadowMaxZ = 500;
   let shadow: BABYLON.CascadedShadowGenerator | null = null;
-  if (!lite) {
+  if (!lite && q.get('shadows') !== '0') {
     shadow = new BABYLON.CascadedShadowGenerator(2048, sun);
-    shadow.numCascades = 4; shadow.lambda = 0.82; shadow.shadowMaxZ = 650; shadow.stabilizeCascades = true; shadow.usePercentageCloserFiltering = true; shadow.filteringQuality = BABYLON.ShadowGenerator.QUALITY_MEDIUM;
+    shadow.numCascades = 3; shadow.lambda = 0.8; shadow.shadowMaxZ = 320; shadow.stabilizeCascades = true; shadow.usePercentageCloserFiltering = true; shadow.filteringQuality = BABYLON.ShadowGenerator.QUALITY_MEDIUM;
     shadow.bias = 0.0006; shadow.normalBias = 0.02; shadow.depthClamp = true; shadow.autoCalcDepthBounds = false; shadow.transparencyShadow = false;
+    shadow.getShadowMap()!.refreshRate = 3;   // the cascades are redrawn every third frame
   }
 
   // ---- terrain ----
@@ -105,7 +124,7 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
   const terrain = new TerrainView(scene, {
     ground, cell: 1, levels: 10, radius: 26000, split: 1.5, buildsPerUpdate: 3, buildMs: 8, looks: LOOKS, water: false,
     sun: first.sunDir, sunColor: first.sunColor, ambient: first.hemiSky, haze: first.hazeColor, hazeDensity: first.hazeDensity,
-    material: (sc) => terrainMaterial(sc, tex),
+    material: (sc) => terrainMaterial(sc, tex, { tex: roadsTexture(sc), box: ROADS_BOX }),
   });
 
   // ---- wind: the field everything reads ----
@@ -115,43 +134,106 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
   // ---- the street ----
   progress(0.25, 'Street');
   const [sdir, sfile] = split('/art/street/street_level.glb');
+  const preMeshes = new Set<BABYLON.AbstractMesh>(scene.meshes);
   const street = await BABYLON.SceneLoader.ImportMeshAsync('', sdir, sfile, scene);
   /** the loader turns a glTF about the vertical (a right-handed file in a left-handed scene); the art is authored with the street along +x and its y as the world's z, so only the mirror stays */
   const upright = (r: BABYLON.AbstractMesh | BABYLON.TransformNode | undefined) => { const root = r?.parent ?? r; if (root && (root as BABYLON.TransformNode).name === '__root__') (root as BABYLON.TransformNode).rotationQuaternion = BABYLON.Quaternion.Identity(); };
   upright(street.meshes[0]);
-  const bakedTrees = await attachBakedWind(scene, '/art/street/street_level.glb').catch(() => 0);   // wind data of the street trees (art/street/TREES.md), 0 while the file has none
+  for (const m of street.meshes.slice()) if (/^COL_/.test(m.name)) m.dispose();   // collision stand-ins are not drawn
+  options.onStreetLoaded?.(street, scene);
   const nodes = new Map<string, BABYLON.TransformNode>(); for (const n of street.transformNodes) nodes.set(n.name, n);
   for (const m of street.meshes) if (m.name === 'Ground') m.dispose();                       // the land is the terrain's now: one ground, flat under the set
-  const lods = new Map<string, { hi?: BABYLON.AbstractMesh; lo?: BABYLON.AbstractMesh }>();
-  for (const m of street.meshes) { const mm = m.name.match(/_LOD([01])$/); if (!mm) continue; const e = lods.get(base(m.name)) ?? {}; if (mm[1] === '0') e.hi = m; else e.lo = m; lods.set(base(m.name), e); }
-  const lodDistance = (name: string) => name.startsWith('Bld_') ? 180 : name.startsWith('StreetTree') ? 110 : 70;
   for (const m of street.meshes) { m.computeWorldMatrix(true); m.isPickable = false; m.receiveShadows = true; if (m.getTotalVertices() > 0) m.alwaysSelectAsActiveMesh = false; }
   progress(0.5, 'Gas station');
   const [gdir, gfile] = split('/art/gas-station/gas_station_lite.glb');
-  const gas = await BABYLON.SceneLoader.ImportMeshAsync('', gdir, gfile, scene).catch(() => null);
+  const gas = options.gas === 'none' ? null : await BABYLON.SceneLoader.ImportMeshAsync('', gdir, gfile, scene).catch(() => null);
   const anchor = nodes.get('GasStation_Anchor');
   if (gas && anchor) {
     const r = gas.meshes[0]; if (r && !r.getTotalVertices()) { r.parent = anchor; r.position.setAll(0); r.rotationQuaternion = BABYLON.Quaternion.Identity(); r.scaling.set(1, 1, 1); }
+    for (const m of gas.meshes.slice()) if (/^COL_/.test(m.name)) m.dispose();
     for (const m of gas.meshes) { m.isPickable = false; m.receiveShadows = true; }
   }
-  const casters = [...street.meshes, ...(gas?.meshes ?? [])];
+
+  // ---- fewer, larger draws: the street's thousand parts are merged by cell (80 m along the street), level of detail and material; the swaying trees are merged too, their pivots in the world's frame ----
+  progress(0.55, 'Merging');
+  const lodOf = (n: BABYLON.Node | null): { base: string; lod: number } | null => { for (; n; n = n.parent) { const mm = n.name.match(/_LOD([01])$/); if (mm) return { base: base(n.name), lod: +mm[1] }; } return null; };
+  /** the leaves and the bark carry the baked wind of the model: their pivots are put in world space when merged */
+  const isSway = (m: BABYLON.AbstractMesh) => !!m.material && /^(leaf_|leaves$|bark)/.test(m.material.name) && m.isVerticesDataPresent(BABYLON.VertexBuffer.UV5Kind);
+  const interiorMaterial = /^(int_|shelfgoods|wincontent|fluor_int|interiors)/;
+  // every placement is brought up to date parents first (the street's root was turned above), then each instance's world matrix is read
+  const depth = (n: BABYLON.Node) => { let d = 0; for (let p = n.parent; p; p = p.parent) d++; return d; };
+  for (const n of [...street.transformNodes, ...street.meshes, ...(gas ? [...gas.transformNodes, ...gas.meshes] : [])].sort((a, b) => depth(a) - depth(b))) (n as BABYLON.TransformNode).computeWorldMatrix(true);
+  // the loader makes instances of repeated parts; each becomes a plain mesh sharing the geometry (placed by its world matrix) so that it can be merged like the rest
+  type Part = { mesh: BABYLON.Mesh; l: { base: string; lod: number } | null; name: string; from?: BABYLON.AbstractMesh };
+  const parts: Part[] = [];
+  const underProp = (n: BABYLON.Node | null) => { for (; n; n = n.parent) if (/^DEST_/.test(n.name)) return true; return false; };
+  const propNodes = new Map<string, BABYLON.TransformNode>();
+  const propLods = new Map<string, { hi?: BABYLON.TransformNode; lo?: BABYLON.TransformNode }>();
+  if (options.keepProps) {
+    for (const n of [...street.transformNodes, ...street.meshes]) {
+      if (/^DEST_.*\d$/.test(n.name)) propNodes.set(n.name, n as BABYLON.TransformNode);
+      const mm = n.name.match(/^(DEST_.*)_LOD([01])$/);
+      if (mm) { const e = propLods.get(mm[1]) ?? {}; if (mm[2] === '0') e.hi = n as BABYLON.TransformNode; else e.lo = n as BABYLON.TransformNode; propLods.set(mm[1], e); }
+    }
+  }
+  for (const m of scene.meshes.slice()) {
+    if (preMeshes.has(m) || m.isDisposed() || m.getTotalVertices() === 0) continue;
+    if (options.keepProps && underProp(m)) { m.isPickable = false; m.receiveShadows = true; continue; }
+    if (m instanceof BABYLON.InstancedMesh) {
+      const src = m.sourceMesh; m.computeWorldMatrix(true);
+      const c = src.clone(`${m.name}_part`, null, true); c.parent = null; c.setEnabled(true); if (isSway(src)) c.makeGeometryUnique();
+      const sc = new BABYLON.Vector3(), q = new BABYLON.Quaternion(), pos = new BABYLON.Vector3(); m.getWorldMatrix().decompose(sc, q, pos);
+      c.scaling.copyFrom(sc); c.rotationQuaternion = q; c.position.copyFrom(pos); c.computeWorldMatrix(true);
+      parts.push({ mesh: c, l: lodOf(m), name: m.name, from: m });
+    } else if (m instanceof BABYLON.Mesh && !m.hasThinInstances) { m.computeWorldMatrix(true); parts.push({ mesh: m, l: lodOf(m), name: m.name }); }
+  }
+  for (const { mesh: m } of parts) {
+    if (!m.isVerticesDataPresent(BABYLON.VertexBuffer.UV5Kind)) continue;
+    if (!isSway(m)) { for (const k of [BABYLON.VertexBuffer.UV2Kind, BABYLON.VertexBuffer.UV3Kind, BABYLON.VertexBuffer.UV4Kind, BABYLON.VertexBuffer.UV5Kind]) if (m.isVerticesDataPresent(k)) m.removeVerticesData(k); continue; }
+    // the pivot of a branch (uv4.y, uv5.xy) goes from the mesh's space to the world's
+    const w = m.computeWorldMatrix(true), u4 = m.getVerticesData(BABYLON.VertexBuffer.UV4Kind)!.slice(), u5 = m.getVerticesData(BABYLON.VertexBuffer.UV5Kind)!.slice(), v = new BABYLON.Vector3();
+    for (let i = 0; i < u4.length / 2; i++) { BABYLON.Vector3.TransformCoordinatesFromFloatsToRef(u4[i * 2 + 1], u5[i * 2], u5[i * 2 + 1], w, v); u4[i * 2 + 1] = v.x; u5[i * 2] = v.y; u5[i * 2 + 1] = v.z; }
+    m.setVerticesData(BABYLON.VertexBuffer.UV4Kind, u4, false, 2); m.setVerticesData(BABYLON.VertexBuffer.UV5Kind, u5, false, 2);
+  }
+  const sides = new Map<string, number>();
+  for (const { l } of parts) if (l) sides.set(l.base, (sides.get(l.base) ?? 0) | (1 << l.lod));
+  const groups = new Map<string, BABYLON.Mesh[]>();
+  for (const { mesh: m, l, name } of parts) {
+    const paired = !!l && sides.get(l.base) === 3, c = m.getBoundingInfo().boundingSphere.centerWorld;
+    const cls = interiorMaterial.test(m.material?.name ?? '') ? 'i' : l && /^Bld_/.test(l.base) ? 'b' : 'p', cast = /Road_|Ground|Wires/.test(name) ? 'n' : 'c';
+    const key = [paired ? l!.lod : 'x', paired || cls === 'i' ? cls : '-', cast, Math.floor(c.x / 80), 0, m.material?.uniqueId ?? 0].join('|');
+    const g = groups.get(key); if (g) g.push(m); else groups.set(key, [m]);
+  }
+  type Cell = { mesh: BABYLON.Mesh; lod: number; limit: number };
+  const cells: Cell[] = [], castable: BABYLON.AbstractMesh[] = [];
+  let mergeFailed = 0;
+  for (const [key, list] of groups) {
+    const [lodS, cls, cast] = key.split('|'); let merged: BABYLON.Mesh | null = list[0];
+    if (list.length > 1) { try { merged = BABYLON.Mesh.MergeMeshes(list, true, true, undefined, false, false) ?? null; } catch { merged = null; mergeFailed++; } }
+    if (!merged) continue;
+    merged.name = `merged_${key}`; merged.isPickable = false; merged.receiveShadows = true; merged.alwaysSelectAsActiveMesh = false; merged.computeWorldMatrix(true); merged.freezeWorldMatrix(); merged.doNotSyncBoundingInfo = true;
+    if (lodS !== 'x') cells.push({ mesh: merged, lod: +lodS, limit: cls === 'b' ? 130 : cls === 'i' ? 40 : 45 });
+    if (cast === 'c' && !/^(int_|shelfgoods|wincontent|fluor_int|interiors|windecals|wallart|shopsigns|glass|paint_dark$)/.test(merged.material?.name ?? '')) castable.push(merged);
+  }
+  for (const { from } of parts) if (from && !from.isDisposed()) from.dispose();
+  for (const m of street.meshes.concat(gas?.meshes ?? [])) if (!m.isDisposed() && m.getTotalVertices() === 0 && m instanceof BABYLON.Mesh && m.getChildren().every(c => c.isDisposed())) m.dispose();   // the emptied parents of the merged parts
+  const casters: BABYLON.AbstractMesh[] = [...castable];
+  if (options.keepProps) for (const m of scene.meshes) if (!preMeshes.has(m) && !m.isDisposed() && m.getTotalVertices() > 0 && underProp(m)) casters.push(m);
+  const boxDistance = (m: BABYLON.AbstractMesh, c: BABYLON.Vector3) => { const b = m.getBoundingInfo().boundingBox.minimumWorld, t = m.getBoundingInfo().boundingBox.maximumWorld; return Math.hypot(Math.max(b.x - c.x, 0, c.x - t.x), Math.max(b.y - c.y, 0, c.y - t.y), Math.max(b.z - c.z, 0, c.z - t.z)); };
   const lodUpdate = () => {
     const c = camera.globalPosition;
-    for (const [name, e] of lods) {
-      if (!e.hi || !e.lo) continue;
-      const bs = e.hi.getBoundingInfo().boundingSphere.centerWorld, d = Math.hypot(bs.x - c.x, bs.y - c.y, bs.z - c.z), near = d < lodDistance(name);
-      if (e.hi.isEnabled() !== near) { e.hi.setEnabled(near); e.lo.setEnabled(!near); }
-    }
+    for (const e of propLods.values()) { if (!e.hi || !e.lo) continue; const pos = e.hi.getAbsolutePosition(), near = Math.hypot(pos.x - c.x, pos.y - c.y, pos.z - c.z) < 70; if (e.hi.isEnabled() !== near) { e.hi.setEnabled(near); e.lo.setEnabled(!near); } }
+    for (const k of cells) { const near = boxDistance(k.mesh, c) < k.limit, on = k.lod === 0 ? near : !near; if (k.mesh.isEnabled() !== on) k.mesh.setEnabled(on); }
   };
   lodUpdate();
-  if (shadow) for (const m of casters) if (m.getTotalVertices() > 0 && !/Road_|Ground|Wires/.test(m.name)) shadow.addShadowCaster(m, false);
+  if (shadow) for (const m of casters) shadow.addShadowCaster(m, false);
 
   // ---- wind on the street: trees, wires, awnings ----
   progress(0.62, 'Wind');
   for (const m of scene.materials) {
     if (m instanceof BABYLON.PBRMaterial) {
-      if (/^leaves$/.test(m.name)) sway.add(m, { kind: 'tree', flutter: 1, gain: 1, weightsFromColor: false });
-      else if (/^bark$/.test(m.name)) sway.add(m, { kind: 'tree', flutter: 0, gain: 1, weightsFromColor: false });
+      if (/^(leaf_|leaves$)/.test(m.name)) sway.add(m, { kind: 'tree', flutter: 1, gain: 1, weightsFromColor: false });
+      else if (/^bark/.test(m.name)) sway.add(m, { kind: 'tree', flutter: 0, gain: 1, weightsFromColor: false });
       else if (/^cable$/.test(m.name)) sway.add(m, { kind: 'cable', top: 10.0, sag: 0.9, gain: 1 });
       else if (/^awn_/.test(m.name)) sway.add(m, { kind: 'awning', gain: 1 });
     }
@@ -161,14 +243,18 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
   progress(0.7, 'Vegetation');
   const oaks = new ScatterView(scene, { ground, species: OAKS, cell: 128, radius: lite ? 700 : 1600, cellsPerUpdate: 2, generators: GENERATORS });
   const bushes = new ScatterView(scene, { ground, species: SHRUBS, cell: 48, radius: lite ? 100 : 200, cellsPerUpdate: 2, generators: GENERATORS });
-  const stones = new ScatterView(scene, { ground, species: STONES, cell: 64, radius: lite ? 120 : 260, cellsPerUpdate: 1, tint: [1.02, 0.95, 0.84] });
+  const stones = new ScatterView(scene, { ground, species: STONES, generators: STONE_GENERATORS, cell: 64, radius: lite ? 120 : 260, cellsPerUpdate: 1, tint: [1.02, 0.95, 0.84] });
   const plantMat = plantMaterial(scene, wind);
   for (const v of [oaks, bushes]) (v as unknown as { mat: BABYLON.Material }).mat = plantMat;
+  /** the dirt roads as segments with their boxes (a metre-wide test against the near ones only): the grass asks thousands of times a frame */
+  const segs = DIRT_ROADS.flatMap(r => r.points.slice(0, -1).map((a, i) => { const b = r.points[i + 1]; return { ax: a[0], az: a[1], dx: b[0] - a[0], dz: b[1] - a[1], l2: (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2, half: r.width / 2, x0: Math.min(a[0], b[0]) - 40, x1: Math.max(a[0], b[0]) + 40, z0: Math.min(a[1], b[1]) - 40, z1: Math.max(a[1], b[1]) + 40 }; }));
   const roadDistance = (x: number, z: number) => {
     let best = 1e9;
-    for (const r of DIRT_ROADS) { const p = r.points; for (let i = 0; i + 1 < p.length; i++) { const ax = p[i][0], az = p[i][1], bx = p[i + 1][0], bz = p[i + 1][1], dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz, u = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2)); best = Math.min(best, Math.hypot(x - ax - dx * u, z - az - dz * u) - r.width / 2); } }
+    for (const s of segs) { if (x < s.x0 || x > s.x1 || z < s.z0 || z > s.z1) continue; const u = Math.max(0, Math.min(1, ((x - s.ax) * s.dx + (z - s.az) * s.dz) / s.l2)); best = Math.min(best, Math.hypot(x - s.ax - s.dx * u, z - s.az - s.dz * u) - s.half); }
     return best;
   };
+  const rockMat = plantMaterial(scene, wind, 0);
+  const surround = buildSurround(scene, rockMat, plantMat, { seed: 1987, ground: groundAt, roadDistance });
   const grass = new GrassView(scene, weather, {
     count: lite ? 5000 : 14000, radius: lite ? 22 : 30, height: 0.62, stiffness: 0.3, ground: groundAt, base: [0.34, 0.27, 0.11], tip: [0.78, 0.66, 0.36],
     density: (x, z) => Math.min(1, Math.max(0, platformEdgeDistance(x, z) / 8)) * Math.min(1, Math.max(0, roadDistance(x, z) / 1.5)) * 0.95,
@@ -206,10 +292,11 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
     dome.set(look);
     hemi.diffuse = new BABYLON.Color3(...look.hemiSky); hemi.groundColor = new BABYLON.Color3(...look.hemiGround); hemi.intensity = look.hemiIntensity;
     sun.direction = new BABYLON.Vector3(-look.sunDir[0], -look.sunDir[1], -look.sunDir[2]); sun.diffuse = new BABYLON.Color3(...look.sunColor); sun.intensity = look.sunIntensity;
-    terrain.setLight(look.sunDir, [look.sunColor[0] * look.sunIntensity * 0.24, look.sunColor[1] * look.sunIntensity * 0.24, look.sunColor[2] * look.sunIntensity * 0.24],
-      [look.hemiSky[0] * look.hemiIntensity * 0.42, look.hemiSky[1] * look.hemiIntensity * 0.42, look.hemiSky[2] * look.hemiIntensity * 0.42], look.hazeColor);
+    terrain.setLight(look.sunDir, [look.sunColor[0] * look.sunIntensity * 0.36, look.sunColor[1] * look.sunIntensity * 0.36, look.sunColor[2] * look.sunIntensity * 0.36],
+      [look.hemiSky[0] * look.hemiIntensity * 0.3, look.hemiSky[1] * look.hemiIntensity * 0.3, look.hemiSky[2] * look.hemiIntensity * 0.3], look.hazeColor);
     terrain.setHaze(look.hazeColor, look.hazeDensity);
     plantMat.light(look.sunDir, [look.sunColor[0] * look.sunIntensity * 0.22, look.sunColor[1] * look.sunIntensity * 0.22, look.sunColor[2] * look.sunIntensity * 0.22], [look.hemiSky[0] * look.hemiIntensity * 0.42, look.hemiSky[1] * look.hemiIntensity * 0.42, look.hemiSky[2] * look.hemiIntensity * 0.42], look.hazeColor, look.hazeDensity);
+    rockMat.light(look.sunDir, [look.sunColor[0] * look.sunIntensity * 0.22, look.sunColor[1] * look.sunIntensity * 0.22, look.sunColor[2] * look.sunIntensity * 0.22], [look.hemiSky[0] * look.hemiIntensity * 0.42, look.hemiSky[1] * look.hemiIntensity * 0.42, look.hemiSky[2] * look.hemiIntensity * 0.42], look.hazeColor, look.hazeDensity);
     grass.setLight([look.sunColor[0] * (0.25 + 0.5 * look.day), look.sunColor[1] * (0.25 + 0.5 * look.day), look.sunColor[2] * (0.25 + 0.5 * look.day)], look.hazeColor, look.fogDensity);
     clouds.setSun(look.sunDir); const tint = 0.35 + 0.65 * look.day; clouds.setTint(tint * (1 + 0.3 * (1 - look.day)), tint, tint * (0.95 - 0.2 * (1 - look.day)));
     cloudField.setCover(weather.state.cloudCover);
@@ -227,8 +314,8 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
   const views = () => ({
     cab: view(30, 1.25, -1.7, 160, 1.6, -1.7),
     cabMid: view(300, 1.25, -1.7, 520, 2.0, -1.7),
-    sunsetFromEnd: view(540, 1.5, -1.7, 380, 5, 0, 0.9),
-    street: view(-30, 5.5, -3.5, 120, 4, 0, 0.85),
+    sunsetFromEnd: view(540, 1.5, 2.5, 380, 5, 0, 0.9),
+    street: view(-48, 8.5, -0.5, 120, 5, 0, 0.85),
     hill: hillCamera(),
     air: view(-260, 120, 260, 300, 5, 0, 0.85),
     ground: view(-70, 1.7, 40, -400, 20, 120, 0.85),
@@ -240,14 +327,15 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
   // ---- each frame ----
   let lastLook = 0;
   const settleOnce = (frames: number) => new Promise<void>((res) => { let n = 0; const o = scene.onAfterRenderObservable.add(() => { if (++n >= frames) { scene.onAfterRenderObservable.remove(o); res(); } }); });
-  let lodAt = 0;
+  let frame = 0, lodAt = 0, terrainAt = -1; let terrainPos: [number, number, number] = [1e9, 0, 0];
   scene.onBeforeRenderObservable.add(() => {
     const dt = Math.min(0.1, engine.getDeltaTime() / 1000), t = world.time, c = camera.globalPosition, cp: [number, number, number] = [c.x, c.y, c.z];
-    terrain.update(cp); oaks.update(cp); bushes.update(cp); stones.update(cp); grass.update(); clouds.update(cp, t);
-    if (t - lastLook > 0.5) { lastLook = t; applyLook(); }
-    if (t - lodAt > 0.2) { lodAt = t; lodUpdate(); }
-    for (const f of flags) f.update(dt);
-    litter.update(dt, c.x, c.z);
+    const tm = <R,>(_k: string, f: () => R): R => f();
+    if (t - terrainAt > 0.25 || Math.hypot(cp[0] - terrainPos[0], cp[1] - terrainPos[1], cp[2] - terrainPos[2]) > 2) { terrainAt = t; terrainPos = cp; tm('terrain', () => terrain.update(cp)); } tm('oaks', () => oaks.update(cp)); tm('bushes', () => bushes.update(cp)); tm('stones', () => stones.update(cp)); if (++frame % 3 === 0) tm('grass', () => grass.update());   // the wave texture is solved on the CPU: a third of the frames are enough for a wave that slow tm('clouds', () => clouds.update(cp, t));
+    if (t - lastLook > 0.5) { lastLook = t; tm('look', applyLook); }
+    if (t - lodAt > 0.2) { lodAt = t; tm('lod', lodUpdate); }
+    tm('flags', () => { for (const f of flags) f.update(dt); });
+    tm('litter', () => litter.update(dt, c.x, c.z));
   });
 
   const api: SetHandle = {
@@ -258,7 +346,7 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
     },
     setHour(h) { hour = h; applyLook(); },
     setWeather(name) { const w = weatherPreset(name); presetName = w.name; preset = w.preset; hour = preset.hour; weather.set(preset.base, preset.state); applyLook(); },
-    views,
+    views, shadow, propNodes, street,
     async goto(name) {
       const v = views()[name as keyof ReturnType<typeof views>]; if (!v) throw new Error(`no view ${name}`);
       aim(camera, v.position, v.target, v.fov);
@@ -271,7 +359,7 @@ export async function buildSet(canvas: HTMLCanvasElement, q: URLSearchParams, pr
     settle: (frames = 30) => settleOnce(frames),
     stats() {
       const s = terrain.stats();
-      return { chunks: s.chunks, triangles: s.triangles, levels: JSON.stringify(s.levels), oaks: oaks.count(), bushes: bushes.count(), stones: stones.count(), grass: grass.drawn, litter: litter.airborne, sway: sway.materials, bakedTrees, meshes: scene.meshes.length, active: scene.getActiveMeshes().length, fps: Math.round(engine.getFps()) };
+      return { chunks: s.chunks, triangles: s.triangles, levels: JSON.stringify(s.levels), oaks: oaks.count(), surround: surround.count, bushes: bushes.count(), stones: stones.count(), grass: grass.drawn, litter: litter.airborne, sway: sway.materials, bakedTrees: scene.meshes.filter(m => m.isVerticesDataPresent(BABYLON.VertexBuffer.UV5Kind)).length, mergeFailed, merged: cells.length + castable.length, meshes: scene.meshes.length, active: scene.getActiveMeshes().length, fps: Math.round(engine.getFps()) };
     },
   };
   progress(0.9, 'Terrain');

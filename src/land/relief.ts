@@ -9,11 +9,11 @@ import { PLATFORM, platformEdgeDistance } from '../config/stage';
 
 /** dirt roads: polylines (x, z) that leave the platform's ends and climb the hills; width in metres */
 export const DIRT_ROADS: Array<{ name: string; width: number; points: Array<[number, number]> }> = [
-  { name: 'west', width: 5.5, points: [[-70, 6], [-140, 14], [-230, 30], [-340, -10], [-470, -70], [-620, -20], [-780, 90], [-980, 210], [-1200, 260], [-1450, 400], [-1750, 470]] },
-  { name: 'west-north', width: 4.2, points: [[-230, 30], [-250, 120], [-290, 260], [-300, 420], [-240, 600], [-120, 800], [60, 960], [300, 1180], [520, 1420]] },
-  { name: 'east', width: 5.5, points: [[678, -6], [760, -12], [880, 18], [1010, 80], [1180, 60], [1380, 130], [1620, 300], [1900, 380], [2300, 360]] },
-  { name: 'east-south', width: 4.2, points: [[900, 24], [940, -80], [1010, -250], [1150, -430], [1330, -560], [1500, -800], [1720, -1000]] },
-  { name: 'south-ranch', width: 3.6, points: [[240, -70], [250, -150], [220, -260], [260, -420], [380, -560], [520, -690], [700, -820]] },
+  { name: 'west', width: 7, points: [[-70, 6], [-140, 14], [-230, 30], [-340, -10], [-470, -70], [-620, -20], [-780, 90], [-980, 210], [-1200, 260], [-1450, 400], [-1750, 470]] },
+  { name: 'west-north', width: 5.5, points: [[-230, 30], [-250, 120], [-290, 260], [-300, 420], [-240, 600], [-120, 800], [60, 960], [300, 1180], [520, 1420]] },
+  { name: 'east', width: 7, points: [[678, -6], [760, -12], [880, 18], [1010, 80], [1180, 60], [1380, 130], [1620, 300], [1900, 380], [2300, 360]] },
+  { name: 'east-south', width: 5.5, points: [[900, 24], [940, -80], [1010, -250], [1150, -430], [1330, -560], [1500, -800], [1720, -1000]] },
+  { name: 'south-ranch', width: 4.5, points: [[240, -70], [250, -150], [220, -260], [260, -420], [380, -560], [520, -690], [700, -820]] },
 ];
 
 /** a closed polygon round a polyline: `half` metres each side */
@@ -29,12 +29,12 @@ function around(points: Array<[number, number]>, half: number): Array<[number, n
 /** how the layers look here: dry gold grass, pale baked soil, tan road dirt, warm grey rock */
 export const LOOKS: Record<string, LayerLook> = {
   ...LAYER_LOOK,
-  'dry-grass': { color: [0.6, 0.46, 0.21], rough: 0.95, grain: 0.7 },
+  'dry-grass': { color: [0.5, 0.37, 0.15], rough: 0.95, grain: 0.7 },
   soil: { color: [0.52, 0.4, 0.28], rough: 0.95, grain: 0.6 },
   gravel: { color: [0.62, 0.55, 0.45], rough: 0.95, grain: 0.8 },
   rock: { color: [0.42, 0.37, 0.31], rough: 0.9, grain: 0.8 },
   scree: { color: [0.46, 0.4, 0.33], rough: 0.9, grain: 0.9 },
-  'desert-pavement': { color: [0.66, 0.54, 0.4], rough: 0.95, grain: 0.7 },
+  'desert-pavement': { color: [0.74, 0.62, 0.46], rough: 0.95, grain: 0.7 },
   // the ranges are dry: what the climate calls snow above 1650 m is bare pale rock here
   snow: { color: [0.3, 0.26, 0.22], rough: 0.9, grain: 0.7 },
   sand: { color: [0.72, 0.6, 0.42], rough: 0.95, grain: 0.5 },
@@ -56,10 +56,15 @@ const platformOp = (): ReliefOp => ({
 /** the relief: broad hills, a second hill system that grows with distance, erosion, far ranges, then the platform on top, flat and at one level */
 export function reliefOps(): ReliefOp[] {
   const [ax, az] = PLATFORM.from, [bx, bz] = PLATFORM.to;
+  const valleyFade = [{ kind: 'line', points: [PLATFORM.from, PLATFORM.to], inner: PLATFORM.halfWidth + ramp + 30, outer: PLATFORM.halfWidth + ramp + 420, invert: true }] as never;
+  const nearFade = [{ kind: 'line', points: [PLATFORM.from, PLATFORM.to], inner: PLATFORM.halfWidth + ramp + 20, outer: PLATFORM.halfWidth + ramp + 330, invert: true }] as never;
   const mid: [number, number] = [(ax + bx) / 2, (az + bz) / 2];
   const ops: ReliefOp[] = [
-    { op: 'noise', kind: 'fbm', amplitude: 62, wavelength: 1150, octaves: 4, offset: 0.5, damp: 0.3, warp: { amplitude: 300, wavelength: 800 } },
-    { op: 'noise', kind: 'fbm', amplitude: 26, wavelength: 420, octaves: 3, offset: 0, damp: 0.4 },
+    // Californian hills: tall rolling ridges with folds, and creek gullies cut between them; the near ground keeps to the platform for 400 m beyond the ramp
+    { op: 'noise', kind: 'fbm', amplitude: 105, wavelength: 1500, octaves: 4, offset: 0.5, damp: 0.3, warp: { amplitude: 380, wavelength: 900 }, mask: valleyFade },
+    { op: 'noise', kind: 'fbm', amplitude: 46, wavelength: 520, octaves: 4, offset: 0, damp: 0.42, warp: { amplitude: 120, wavelength: 300 }, mask: nearFade },
+    { op: 'noise', kind: 'ridged', amplitude: -26, wavelength: 330, octaves: 3, sharpness: 1.25, offset: 0, mask: nearFade },
+    { op: 'noise', kind: 'ridged', amplitude: -11, wavelength: 120, octaves: 3, sharpness: 1.1, offset: 0, mask: nearFade },
     { op: 'noise', kind: 'fbm', amplitude: 70, wavelength: 2600, octaves: 4, offset: 0.05, damp: 0.5, mask: [{ kind: 'radial', center: mid, inner: 500, outer: 3200, invert: true }] },
     { op: 'noise', kind: 'ridged', amplitude: 260, wavelength: 5200, octaves: 4, sharpness: 1.6, offset: 0, mask: [{ kind: 'radial', center: mid, inner: 3500, outer: 9000, invert: true }] },
     // ranges on the skyline: north is the great one, a lower one east, a long blue ridge west and south
@@ -67,7 +72,7 @@ export function reliefOps(): ReliefOp[] {
     { op: 'shape', shape: 'range', points: [[19000, -9000], [20500, 0], [19500, 9000]], width: 3600, height: 900, ruggedness: 0.8 },
     { op: 'shape', shape: 'range', points: [[-19000, 10000], [-20500, 0], [-18500, -9500]], width: 3800, height: 1000, ruggedness: 0.8 },
     { op: 'shape', shape: 'range', points: [[-12000, -15500], [0, -17000], [14000, -15000]], width: 3200, height: 650, ruggedness: 0.7 },
-    { op: 'erode', step: 48, iterations: 8, strength: 0.7, talus: 36, block: 64, border: 16, mask: [{ kind: 'radial', center: mid, inner: 1400, outer: 2800 }] },
+    { op: 'erode', step: 48, iterations: 10, strength: 0.8, talus: 30, block: 64, border: 16, mask: [{ kind: 'radial', center: mid, inner: 2200, outer: 3800 }] },
     // fine relief: gullies and humps a person walks over
     { op: 'noise', kind: 'fbm', amplitude: 3.2, wavelength: 140, octaves: 4, damp: 0.2 },
     { op: 'noise', kind: 'fbm', amplitude: 0.35, wavelength: 18, octaves: 3 },

@@ -25,7 +25,7 @@ const FRAG = `
 precision highp float;
 varying vec3 vN; varying vec4 vC; varying float vDist; varying vec3 vW; varying float vS;
 uniform vec3 sunDir; uniform vec3 sunColor; uniform vec3 ambient; uniform vec3 hazeColor; uniform float hazeDensity; uniform vec3 groundColor; uniform float exposure;
-uniform sampler2D grassTex; uniform sampler2D soilTex; uniform sampler2D rockTex;
+uniform sampler2D grassTex; uniform sampler2D soilTex; uniform sampler2D rockTex; uniform sampler2D roadTex; uniform vec4 roadBox;
 float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y); }
 float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
@@ -48,6 +48,16 @@ void main() {
   float hue = vn(vW.xz * 0.0021 + 11.0), hue2 = vn(vW.xz * 0.009 + 5.0);
   base *= mix(vec3(1.12, 1.0, 0.8), vec3(0.86, 0.98, 0.84), smoothstep(0.35, 0.7, hue)) * (0.82 + 0.36 * hue2);
   base *= mix(1.0, detail, 0.82 * near) * (1.0 + g * grain * 0.55 * near) * (1.0 + big * 0.5 * mid);
+  // green hollows: the flat ground in patches, after rain-fed pockets of the hills
+  float pocket = smoothstep(0.58, 0.8, vn(vW.xz * 0.0035 + 21.0) * 0.65 + vn(vW.xz * 0.013 + 4.0) * 0.35) * smoothstep(0.9, 0.985, n.y) * (1.0 - slopeK);
+  base = mix(base, base * vec3(0.5, 0.8, 0.42) + vec3(0.012, 0.03, 0.004), pocket * 0.6);
+  // the dirt roads from the picture of the land seen from above
+  vec2 ru = (vW.xz - roadBox.xy) * roadBox.zw;
+  if (ru.x > 0.0 && ru.x < 1.0 && ru.y > 0.0 && ru.y < 1.0) {
+    vec3 rm = texture2D(roadTex, ru).rgb; float road = smoothstep(0.2, 0.75, rm.r);
+    vec3 dirt = pow(vec3(0.7, 0.58, 0.42), vec3(2.2)) * (0.88 + 0.3 * g + 0.2 * (rel(soilTex, p * 0.9) - 1.0) * near) * (1.0 - 0.28 * rm.g * (0.5 + 0.5 * vn(vW.xz * 0.8)));
+    base = mix(base, dirt, road * 0.93);
+  }
   float lit = max(dot(n, normalize(sunDir)), 0.0) * (1.0 - vS);
   vec3 col = base * (ambient * (0.55 + 0.45 * n.y) + sunColor * lit);
   float f = 1.0 - exp(-hazeDensity * vDist);
@@ -58,15 +68,16 @@ void main() {
 export interface TerrainTextures { grass: BABYLON.BaseTexture; soil: BABYLON.BaseTexture; rock: BABYLON.BaseTexture }
 
 /** the material handed to `TerrainView.material`; keeps the lighting in step with the sky through `light()` */
-export function terrainMaterial(scene: BABYLON.Scene, tex: TerrainTextures) {
+export function terrainMaterial(scene: BABYLON.Scene, tex: TerrainTextures, roads?: { tex: BABYLON.BaseTexture; box: { x0: number; z0: number; w: number; h: number } }) {
   BABYLON.Effect.ShadersStore['take37TerrainVertexShader'] = VERT; BABYLON.Effect.ShadersStore['take37TerrainFragmentShader'] = FRAG;
   const m = new BABYLON.ShaderMaterial('terrain-mat', scene, { vertex: 'take37Terrain', fragment: 'take37Terrain' }, {
     attributes: ['position', 'normal', 'color', 'morph', 'shadow'],
-    uniforms: ['world', 'worldViewProjection', 'cameraPosition', 'morphRange', 'sunDir', 'sunColor', 'ambient', 'hazeColor', 'hazeDensity', 'groundColor', 'exposure'],
-    samplers: ['grassTex', 'soilTex', 'rockTex'],
+    uniforms: ['world', 'worldViewProjection', 'cameraPosition', 'morphRange', 'sunDir', 'sunColor', 'ambient', 'hazeColor', 'hazeDensity', 'groundColor', 'exposure', 'roadBox'],
+    samplers: ['grassTex', 'soilTex', 'rockTex', 'roadTex'],
   });
   m.setTexture('grassTex', tex.grass); m.setTexture('soilTex', tex.soil); m.setTexture('rockTex', tex.rock);
-  m.setVector3('groundColor', new BABYLON.Vector3(0.5, 0.4, 0.3)); m.setFloat('exposure', 1);
+  if (roads) { m.setTexture('roadTex', roads.tex); m.setVector4('roadBox', new BABYLON.Vector4(roads.box.x0, roads.box.z0, 1 / roads.box.w, 1 / roads.box.h)); } else { m.setTexture('roadTex', tex.soil); m.setVector4('roadBox', new BABYLON.Vector4(1e9, 1e9, 1e-9, 1e-9)); }
+  m.setVector3('groundColor', new BABYLON.Vector3(0.5, 0.4, 0.3)); m.setFloat('exposure', 0.82);
   m.backFaceCulling = false;
   // the terrain lies a little behind the road where the two share a plane (the platform), whatever the depth precision
   m.zOffset = 3; m.zOffsetUnits = 3;

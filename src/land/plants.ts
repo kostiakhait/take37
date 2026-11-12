@@ -1,5 +1,5 @@
 // Copyright (C) Konstantin Khait, Squirrel Wisdom Academy, 2026
-import { ROCKS, hash2, subSeed, type MeshData, type Species } from '@ferret/terrain';
+import { ROCKS, hash2, makeRock, subSeed, type MeshData, type Species } from '@ferret/terrain';
 
 /**
  * Plants of the Californian hills, made in code in the shape `@ferret/terrain`'s `ScatterView` takes: a mesh of unit height with its base on y = 0 and vertex colours. The wind moves a
@@ -57,32 +57,31 @@ class Mesh {
 const BARK: C3 = [0.22, 0.17, 0.12], BARK_HI: C3 = [0.34, 0.28, 0.2];
 
 /**
- * A valley oak / coast live oak: a short thick trunk that forks low into heavy limbs spread wide, under a broad dome of dark olive leaf masses in tiers; unit height, crown about 1.5 wide.
- * Foliage is 60 to 80 lumpy masses of a few dozen triangles each, with colours that darken under the canopy and warm in the sun on top.
+ * A coast live oak of the dry hills: a short, very thick trunk that forks near the ground into heavy, crooked limbs, under a broad low mound of dense dark-green leaf masses that nearly
+ * touches the ground (the crown is wider than the tree is tall); unit height, the crown about 1.7 wide. Some limbs show through the lower crown.
  */
 export function oak(seed: number, variant: number): PlantData {
   const s = subSeed(seed, 900 + variant * 53), m = new Mesh();
-  const lean = 0.05 * (hash2(variant, 1, s) - 0.5);
-  m.tube([0, 0, 0], [lean, 0.2, 0.01], 0.055, 0.04, 8, BARK, BARK);
-  const limbs = 4 + Math.floor(2 * hash2(variant, 2, s)), crown: C3[] = [];
+  const lean = 0.12 * (hash2(variant, 1, s) - 0.5);
+  m.tube([0, 0, 0], [lean * 0.5, 0.1, 0.01], 0.105, 0.085, 9, BARK, BARK);
+  const limbs = 3 + Math.floor(3 * hash2(variant, 2, s)), crown: C3[] = [];
   for (let i = 0; i < limbs; i++) {
-    const a = (i / limbs) * 6.283 + hash2(variant, 3 + i, s) * 1.1, up = 0.28 + 0.14 * hash2(variant, 9 + i, s), reach = 0.46 + 0.2 * hash2(variant, 15 + i, s);
-    const mid: C3 = [lean + Math.cos(a) * reach * 0.5, 0.2 + up * 0.6, Math.sin(a) * reach * 0.5], tip: C3 = [lean + Math.cos(a) * reach, 0.2 + up + 0.2, Math.sin(a) * reach];
-    m.tube([lean, 0.19, 0.01], mid, 0.032, 0.022, 6, BARK, BARK_HI); m.tube(mid, tip, 0.022, 0.01, 5, BARK_HI, BARK_HI);
+    const a = (i / limbs) * 6.283 + hash2(variant, 3 + i, s) * 1.3, up = 0.16 + 0.16 * hash2(variant, 9 + i, s), reach = 0.5 + 0.34 * hash2(variant, 15 + i, s), bend = 0.25 * (hash2(variant, 21 + i, s) - 0.5);
+    const base: C3 = [lean * 0.5, 0.09, 0.01], mid: C3 = [Math.cos(a) * reach * 0.45, 0.1 + up * 0.7, Math.sin(a) * reach * 0.45], tip: C3 = [Math.cos(a + bend) * reach, 0.1 + up + 0.2, Math.sin(a + bend) * reach];
+    m.tube(base, mid, 0.07, 0.05, 7, BARK, BARK_HI); m.tube(mid, tip, 0.05, 0.022, 6, BARK_HI, BARK_HI);
     crown.push(tip);
-    // a twig fork
-    const a2 = a + 0.7 * (hash2(variant, 40 + i, s) - 0.5) * 2, t2: C3 = [mid[0] + Math.cos(a2) * 0.2, mid[1] + 0.2, mid[2] + Math.sin(a2) * 0.2];
-    m.tube(mid, t2, 0.016, 0.008, 5, BARK_HI, BARK_HI); crown.push(t2);
+    const a2 = a + 0.9 * (hash2(variant, 40 + i, s) - 0.5) * 2, t2: C3 = [mid[0] + Math.cos(a2) * 0.28, mid[1] + 0.2, mid[2] + Math.sin(a2) * 0.28];
+    m.tube(mid, t2, 0.03, 0.012, 5, BARK_HI, BARK_HI); crown.push(t2);
   }
-  const dark: C3 = [0.05, 0.075, 0.03], mid: C3 = [0.13, 0.16, 0.05], light: C3 = [0.3, 0.32, 0.1];
-  const n = 62 + Math.floor(14 * hash2(variant, 5, s));
+  const dark: C3 = [0.03, 0.05, 0.022], mid: C3 = [0.07, 0.105, 0.04], light: C3 = [0.17, 0.215, 0.07];
+  const n = 46 + Math.floor(10 * hash2(variant, 5, s));
   for (let i = 0; i < n; i++) {
-    const k = hash2(variant, 100 + i, s), a = hash2(variant, 200 + i, s) * 6.283, r = Math.sqrt(hash2(variant, 300 + i, s)) * 0.72;
-    // a dome: height falls with the distance from the middle
-    const y = 0.5 + 0.44 * (1 - (r / 0.78) ** 2) + 0.12 * (hash2(variant, 400 + i, s) - 0.5), tier = Math.min(1, Math.max(0, (y - 0.4) / 0.6));
-    const c = crown[i % crown.length]; const cx = Math.cos(a) * r * 0.9 + (c[0] - lean) * 0.35, cz = Math.sin(a) * r * 0.9 + c[2] * 0.35;
-    const size = 0.17 + 0.1 * k;
-    m.mass([lean + cx, y, cz], size * 1.15, size * 0.8, size * 1.15, s + i, 0.28, mix3(dark, mid, tier * 0.6), mix3(mid, light, 0.3 + 0.7 * tier), 3, 7);
+    const k = hash2(variant, 100 + i, s), a = hash2(variant, 200 + i, s) * 6.283, r = (0.25 + 0.75 * Math.sqrt(hash2(variant, 300 + i, s))) * 0.86;
+    // a mound: a dome 0.55 high over a footprint 0.86 in radius, the masses on its shell and a few inside; low masses brush the ground
+    const dome = Math.sqrt(Math.max(0, 1 - (r / 0.95) ** 2)), y = 0.2 + 0.62 * dome * (0.55 + 0.45 * hash2(variant, 400 + i, s)), tier = Math.min(1, Math.max(0, (y - 0.18) / 0.6));
+    const c = crown[i % crown.length], cx = Math.cos(a) * r + (c[0]) * 0.18, cz = Math.sin(a) * r + c[2] * 0.18;
+    const size = 0.2 + 0.13 * k;
+    m.mass([cx, y, cz], size * 1.25, size * 0.85, size * 1.25, s + i, 0.3, mix3(dark, mid, tier * 0.5), mix3(mid, light, 0.25 + 0.75 * tier), 3, 6);
   }
   return m.done();
 }
@@ -117,17 +116,24 @@ export function strawTuft(seed: number, variant: number): PlantData {
 /** the generators handed to the scatter view */
 export const GENERATORS: Record<string, (seed: number, variant: number) => PlantData> = { oak, sage, 'straw-tuft': strawTuft };
 
+/** stones of the cheapest honest meshes: a pebble 80 faces, a rock 320, a boulder 1280 (thousands of them stand in view) */
+export const STONE_GENERATORS: Record<string, (seed: number, variant: number) => MeshData> = {
+  pebble: (seed, v) => makeRock(seed + 6, v, 0.4, 1),
+  rock: (seed, v) => makeRock(seed + 4, v, 0.55, 2),
+  boulder: (seed, v) => makeRock(seed + 7, v, 0.85, 3),
+};
+
 /** where what grows (individuals per 100 m2 where a biome weighs 1) */
 export const OAKS: Species[] = [
   // rare, in loose groves on the lower slopes and in the gullies; the size is the height, 7 to 16 m, few large
-  { id: 'oak', shape: 'oak', biomes: { steppe: 0.045, savanna: 0.045, meadow: 0.08 }, size: [6.5, 16], exponent: 3.2, variants: 5, slope: [0, 0.38], dry: true, cluster: { wavelength: 420, lo: 0.42, hi: 0.72 }, layers: { 'desert-pavement': 0, rock: 0, scree: 0 } },
+  { id: 'oak', shape: 'oak', biomes: { steppe: 0.045, savanna: 0.045, meadow: 0.08 }, size: [5, 12], exponent: 2.6, variants: 6, slope: [0, 0.5], dry: true, cluster: { wavelength: 420, lo: 0.42, hi: 0.72 }, layers: { 'desert-pavement': 0, rock: 0, scree: 0 } },
 ];
 export const SHRUBS: Species[] = [
   { id: 'sage', shape: 'sage', biomes: { steppe: 0.55, savanna: 0.5 }, size: [0.7, 2.4], exponent: 2.4, variants: 5, slope: [0, 0.8], dry: true, cluster: { wavelength: 60, lo: 0.34, hi: 0.7 }, layers: { 'desert-pavement': 0.05 } },
   { id: 'straw-tuft', shape: 'straw-tuft', biomes: { steppe: 6, savanna: 5 }, size: [0.35, 0.9], exponent: 2, variants: 4, slope: [0, 0.9], dry: true, cluster: { wavelength: 14, lo: 0.2, hi: 0.5 }, layers: { rock: 0, scree: 0.1, 'desert-pavement': 0.04 } },
 ];
 export const STONES: Species[] = [
-  { id: 'pebble', shape: 'rock', biomes: { steppe: 1.4, 'rock-desert': 6, cliffs: 8 }, size: [0.08, 0.3], exponent: 2.2, buried: 0.35, variants: 6, slope: [0, 2] },
+  { id: 'pebble', shape: 'pebble', biomes: { steppe: 1.4, 'rock-desert': 6, cliffs: 8 }, size: [0.08, 0.3], exponent: 2.2, buried: 0.35, variants: 6, slope: [0, 2] },
   { id: 'rock', shape: 'rock', biomes: { steppe: 0.25, 'rock-desert': 1.2, cliffs: 4 }, size: [0.3, 1.2], exponent: 2.2, buried: 0.3, variants: 6, cluster: { wavelength: 90, lo: 0.4, hi: 0.7 }, slope: [0, 1.6] },
   { id: 'boulder', shape: 'boulder', biomes: { steppe: 0.02, 'rock-desert': 0.1, cliffs: 1.2 }, size: [1.2, 5], exponent: 2.4, buried: 0.25, variants: 5, cluster: { wavelength: 180, lo: 0.4, hi: 0.7 }, slope: [0, 2] },
 ];
