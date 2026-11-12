@@ -12,6 +12,7 @@ import random
 from mathutils import Vector as V
 
 import kitlib as K
+import interiors_kit as I
 from kitlib import MB
 
 FH0, FH = 4.3, 3.4            # ground-floor and upper floor heights
@@ -107,10 +108,57 @@ def window_upper(m, y, zc, w, h, x0, hi, spec, rnd, lit):
     else:
         m.quad((x0 - 0.02, y1, z0), (x0 - 0.02, y0, z0), (x0 - 0.02, y0, z1), (x0 - 0.02, y1, z1), 'glass_dirty', out=(1, 0, 0))
         m.box(x0, y0 - 0.05, z0 - 0.08, x0 + 0.1, y1 + 0.05, z0, trim)
-    # what is behind the glass: blind, curtain or dark room
-    bx = x0 - (0.5 if hi else 0.3)
-    r = interior_rect(rnd.randrange(4))
-    m.uvrect([(bx, y1, z0), (bx, y0, z0), (bx, y0, z1), (bx, y1, z1)], 'interiors', r, out=(1, 0, 0))
+    # what is behind the glass: blind, shade, curtains, a dark or a lit room (a small box room with the picture on its back wall)
+    bx = x0 - (0.62 if hi else 0.3)
+    ci = rnd.randrange(8)
+    c, rr = ci % 4, ci // 4
+    r = (c / 4 + 0.002, 1 - (rr + 1) / 2 + 0.002, (c + 1) / 4 - 0.002, 1 - rr / 2 - 0.002)
+    m.uvrect([(bx, y0, z0), (bx, y1, z0), (bx, y1, z1), (bx, y0, z1)], 'wincontent', r, out=(1, 0, 0))
+    if hi:
+        dd = x0 - d + 0.05
+        for (pa, pb, nrm) in (((bx, y0, z0), (dd, y0, z0), (0, 1, 0)), ((dd, y1, z0), (bx, y1, z0), (0, -1, 0))):
+            m.face([pa, pb, (pb[0], pb[1], z1), (pa[0], pa[1], z1)], 'wincontent', out=nrm, uv=[(r[0] + 0.01, r[1] + 0.2)] * 4)
+        m.face([(dd, y0, z1), (bx, y0, z1), (bx, y1, z1), (dd, y1, z1)], 'wincontent', out=(0, 0, -1), uv=[(r[0] + 0.01, r[3] - 0.01)] * 4)
+        m.face([(dd, y0, z0), (dd, y1, z0), (bx, y1, z0), (bx, y0, z0)], 'wincontent', out=(0, 0, 1), uv=[(r[0] + 0.01, r[1] + 0.05)] * 4)
+        if rnd.random() < 0.18:                                    # a window air conditioner of the 1980s: box in the lower sash, grille and a drip stain
+            m.box(x0 - 0.12, y - 0.3, z0 + 0.12, x0 + 0.46, y + 0.3, z0 + 0.55, 'paint_white', bv=0.02)
+            m.box(x0 + 0.46, y - 0.26, z0 + 0.2, x0 + 0.47, y + 0.26, z0 + 0.45, 'steel')
+            for q in range(6):
+                m.box(x0 + 0.465, y - 0.24, z0 + 0.22 + q * 0.04, x0 + 0.475, y + 0.24, z0 + 0.235 + q * 0.04, 'paint_dark')
+            m.box(x0 - 0.14, y - 0.34, z0 + 0.05, x0 + 0.5, y + 0.34, z0 + 0.12, 'paint_white')
+
+
+def window_dressing(m, xg, a, b, zb, zt, rnd, kind, W):
+    """Glass dressing of one display window: haze at the bottom, grime, signs, a poster or two (windecals atlas, in front of the glass)."""
+    xd = xg + 0.006
+    for (cell, zz0, zz1, al) in ((10, zb, zt, 1), (11, zb, zt, 1)):
+        r = I.gcell(cell, 0.0)
+        m.uvrect([(xd, a + 0.03, zz0 + 0.03), (xd, b - 0.03, zz0 + 0.03), (xd, b - 0.03, zz1 - 0.03), (xd, a + 0.03, zz1 - 0.03)], 'windecals', r, out=(1, 0, 0))
+        xd += 0.0008
+    picks = []
+    k = rnd.random()
+    if kind in ('diner', 'tavern'):
+        picks.append((4 if kind == 'diner' else 7, 0.9))
+    elif kind == 'barber':
+        picks.append((9, 0.8))
+    if k < 0.55:
+        picks.append((0, 0.7))
+    if rnd.random() < 0.35:
+        picks.append((1, 0.8))
+    if rnd.random() < 0.3:
+        picks.append((3, 0.75))
+    if rnd.random() < 0.3:
+        picks.append((5, 0.8))
+    if rnd.random() < 0.15:
+        picks.append((7, 0.5))
+    y = a + 0.5
+    for (cell, sz) in picks:
+        if b - a < sz + 0.4:
+            continue
+        yc = rnd.uniform(a + sz / 2 + 0.15, b - sz / 2 - 0.15)
+        zc = rnd.uniform(zb + 0.9 + sz / 2, zt - 0.35 - sz / 2) if zt - zb > 2.0 + sz else (zb + zt) / 2
+        xd += 0.0008
+        m.uvrect([(xd, yc - sz / 2, zc - sz / 2), (xd, yc + sz / 2, zc - sz / 2), (xd, yc + sz / 2, zc + sz / 2), (xd, yc - sz / 2, zc + sz / 2)], 'windecals', I.gcell(cell, 0.0), out=(1, 0, 0))
 
 
 def shopfront(m, spec, hi, x0, y0, y1, rnd):
@@ -135,6 +183,12 @@ def shopfront(m, spec, hi, x0, y0, y1, rnd):
         # bulkhead panel
         m.box(x0 - 0.1, a, 0.0, x0 + 0.06, b, zb, shopmat, bv=0.012 if hi else 0)
         m.box(x0 - 0.02, a - 0.05, zb - 0.04, x0 + 0.1, b + 0.05, zb + 0.04, trim, bv=0.01 if hi else 0)      # stall board cap
+        if hi and rnd.random() < 0.5 and b - a > 1.2:                                                           # a sticker / tag on the bulkhead
+            ci = rnd.choice([4, 5, 6, 7, 8, 9, 10, 11])
+            c_, r_ = ci % 4, ci // 4
+            yy_ = rnd.uniform(a + 0.35, b - 0.35)
+            m.uvrect([(x0 + 0.061, yy_ - 0.3, 0.02), (x0 + 0.061, yy_ + 0.3, 0.02), (x0 + 0.061, yy_ + 0.3, 0.52), (x0 + 0.061, yy_ - 0.3, 0.52)], 'wallart',
+                     (c_ / 4 + 0.002, 1 - (r_ + 1) / 4 + 0.002, (c_ + 1) / 4 - 0.002, 1 - r_ / 4 - 0.002), out=(1, 0, 0))
         # glass, set back 0.25
         xg = x0 - 0.22
         m.quad((xg, b, zb), (xg, a, zb), (xg, a, zt), (xg, b, zt), 'glass', out=(1, 0, 0))
@@ -150,15 +204,22 @@ def shopfront(m, spec, hi, x0, y0, y1, rnd):
                 yy = a + (b - a) * k / (n + 1)
                 m.box(xg - 0.01, yy - 0.025, zb, xg + 0.08, yy + 0.025, zt, wood, bv=0.004)
             m.box(xg - 0.01, a, zt - 0.5, xg + 0.08, b, zt - 0.45, wood)                                 # transom bar
-        # shop interior backdrop, lit
-        bx = x0 - 0.9
-        r = interior_rect(rnd.randrange(4))
-        m.uvrect([(bx, b, zb), (bx, a, zb), (bx, a, zt), (bx, b, zt)], 'interiors', r, out=(1, 0, 0))
-        m.quad((x0 - 0.22, a, zt), (x0 - 0.22, b, zt), (bx, b, zt), (bx, a, zt), 'interiors', out=(0, 0, -1), uv=[(0.02, 0.9), (0.02, 0.9), (0.02, 0.9), (0.02, 0.9)]) if False else None
-        m.quad((x0 - 0.22, a, zb), (bx, a, zb), (bx, b, zb), (x0 - 0.22, b, zb), 'wood_oak', out=(0, 0, 1))      # floor boards
-        m.quad((x0 - 0.22, a, zt), (bx, a, zt), (bx, b, zt), (x0 - 0.22, b, zt), 'plaster_cream', out=(0, 0, -1))
-        m.quad((x0 - 0.22, a, zb), (x0 - 0.22, a, zt), (bx, a, zt), (bx, a, zb), 'plaster_cream', out=(0, 1, 0))
-        m.quad((x0 - 0.22, b, zb), (bx, b, zb), (bx, b, zt), (x0 - 0.22, b, zt), 'plaster_cream', out=(0, -1, 0))
+        if not hi:                                      # LOD1: the painted backdrop; LOD0 has a real room (interiors_kit.py)
+            bx = x0 - 0.9
+            r = interior_rect(rnd.randrange(4))
+            m.uvrect([(bx, b, zb), (bx, a, zb), (bx, a, zt), (bx, b, zt)], 'interiors', r, out=(1, 0, 0))
+            m.quad((x0 - 0.22, a, zb), (bx, a, zb), (bx, b, zb), (x0 - 0.22, b, zb), 'wood_oak', out=(0, 0, 1))      # floor boards
+            m.quad((x0 - 0.22, a, zt), (bx, a, zt), (bx, b, zt), (x0 - 0.22, b, zt), 'plaster_cream', out=(0, 0, -1))
+            m.quad((x0 - 0.22, a, zb), (x0 - 0.22, a, zt), (bx, a, zt), (bx, a, zb), 'plaster_cream', out=(0, 1, 0))
+            m.quad((x0 - 0.22, b, zb), (bx, b, zb), (bx, b, zt), (x0 - 0.22, b, zt), 'plaster_cream', out=(0, -1, 0))
+    if hi:
+        rm, kind, cells = I.build_interior(m, spec, x0, y0, y1, zb, zt, dpos, rnd, hi)
+        for (a, b) in seg:
+            if b - a < 0.8:
+                continue
+            I.display_platform(m, rm, a, b, zb, cells, rnd, kind)
+            window_dressing(m, x0 - 0.22, a, b, zb, zt, rnd, kind, W)
+        m.face([(rm['xf'], dy0, 0.12), (x0 - rec - 0.04, dy0, 0.12), (x0 - rec - 0.04, dy1, 0.12), (rm['xf'], dy1, 0.12)], I.STYLE[kind][1], out=(0, 0, 1))   # floor behind the door
     # recessed entrance
     xr = x0 - rec
     m.quad((x0 - 0.12, dpos + door_w / 2 + 0.12, 0.0), (xr, dpos + door_w / 2 + 0.12, 0.0), (xr, dpos + door_w / 2 + 0.12, zt), (x0 - 0.12, dpos + door_w / 2 + 0.12, zt), spec['wall'], out=(0, -1, 0))
@@ -266,6 +327,46 @@ def fire_escape(m, hi, x0, yc, z_levels):
                 m.tube([(xx, yc - 0.2, z), (xx, yc + 0.2, z)], 0.01, mat, seg=4)
 
 
+def wall_decor(m, spec, rnd, y0, y1, ztop, D, zf, n):
+    """Wall art (wallart atlas, alpha decals): ghost ads painted on the side walls, wheat-paste posters, graffiti low on the walls and bulkheads, rain streaks under the cornice."""
+    def cell(i, e=0.002):
+        c, r = i % 4, i // 4
+        return (c / 4 + e, 1 - (r + 1) / 4 + e, (c + 1) / 4 - e, 1 - r / 4 - e)
+    brick = spec['style'] == 'brick'
+    for (ys, sgn) in ((y0, -1), (y1, 1)):
+        yy = ys + sgn * 0.012
+        xs = [-5.75 - 6.5 * k for k in range(int(D / 6.5)) if -5.75 - 6.5 * k - 1.5 > -D]
+        for xc in xs:
+            k = rnd.random()
+            if brick and k < 0.35:                                       # ghost ad up on the wall, below the parapet
+                s = rnd.uniform(3.2, 4.4)
+                zc = ztop - 0.6 - s / 2
+                a = rnd.randrange(4)
+                m.uvrect([(xc + s / 2, yy, zc - s / 2), (xc - s / 2, yy, zc - s / 2), (xc - s / 2, yy, zc + s / 2), (xc + s / 2, yy, zc + s / 2)] if sgn > 0 else
+                         [(xc - s / 2, yy, zc - s / 2), (xc + s / 2, yy, zc - s / 2), (xc + s / 2, yy, zc + s / 2), (xc - s / 2, yy, zc + s / 2)], 'wallart', cell(a), out=(0, sgn, 0))
+            elif k < 0.6:                                                # wheat-paste posters at street height, overlapping
+                for _ in range(rnd.randint(2, 4)):
+                    s = rnd.uniform(0.9, 1.5)
+                    xo, zo = xc + rnd.uniform(-1.2, 1.2), rnd.uniform(1.5, 2.6)
+                    a = 4 + rnd.randrange(4)
+                    pts = [(xo + s / 2, yy, zo - s / 2), (xo - s / 2, yy, zo - s / 2), (xo - s / 2, yy, zo + s / 2), (xo + s / 2, yy, zo + s / 2)]
+                    if sgn < 0:
+                        pts = [pts[1], pts[0], pts[3], pts[2]]
+                    m.uvrect(pts, 'wallart', cell(a), out=(0, sgn, 0))
+            if rnd.random() < 0.5:                                       # graffiti tag near the ground
+                s = rnd.uniform(1.0, 1.7)
+                xo, zo = xc + rnd.uniform(-1.6, 1.6), rnd.uniform(0.7, 1.6)
+                pts = [(xo + s / 2, yy + sgn * 0.001, zo - s / 2), (xo - s / 2, yy + sgn * 0.001, zo - s / 2), (xo - s / 2, yy + sgn * 0.001, zo + s / 2), (xo + s / 2, yy + sgn * 0.001, zo + s / 2)]
+                if sgn < 0:
+                    pts = [pts[1], pts[0], pts[3], pts[2]]
+                m.uvrect(pts, 'wallart', cell(8 + rnd.randrange(4)), out=(0, sgn, 0))
+            s = rnd.uniform(2.5, 3.5)                                    # rain streaks from the coping
+            pts = [(xc + s / 2, yy + sgn * 0.002, ztop - 3.4), (xc - s / 2, yy + sgn * 0.002, ztop - 3.4), (xc - s / 2, yy + sgn * 0.002, ztop + 0.5), (xc + s / 2, yy + sgn * 0.002, ztop + 0.5)]
+            if sgn < 0:
+                pts = [pts[1], pts[0], pts[3], pts[2]]
+            m.uvrect(pts, 'wallart', cell(15), out=(0, sgn, 0))
+
+
 def make_building(spec, lod):
     seed = spec['seed']
     rnd = random.Random(seed)
@@ -312,6 +413,8 @@ def make_building(spec, lod):
     pw = 0.32 if spec['style'] == 'brick' else 0.14
     for ys in (y0, y1 - pw):
         m.box(0.0, ys, 0.5, 0.06, ys + pw, ztop, spec['wall'] if spec['style'] == 'brick' else trim, bv=0.01 if hi else 0)
+    if hi:
+        wall_decor(m, spec, random.Random(seed + 77), y0, y1, ztop, D, zf, n)
     # --- side walls, back wall, roof
     sstep = 2.2 if hi else 4.0
     for (ys, nrm, flip) in ((y0, (0, -1, 0), 1), (y1, (0, 1, 0), -1)):

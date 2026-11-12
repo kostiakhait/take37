@@ -19,7 +19,7 @@ Library packages `tex-*` (base colour, normal, ORM maps), read from `D:\REPO\fer
 | tex-concrete-312 | asphalt: the aggregate grain and the normal map (the colour pass is made for the game) |
 | tex-wood-beige | the grain under the painted clapboard siding |
 | tex-wood-pine, tex-wood-brown, tex-wood-dark-brown, tex-wood-oak | bench slats, shop-front frames, utility poles, counters, floors |
-| tex-bark01 | tree trunks and branches |
+| tex-bark01, tex-bark02 | tree trunks and branches (maple; elm and oak) |
 | tex-ground-grass, tex-grass | verge round the street, planters, lot edge |
 | tex-soil | tree pits and planters |
 | tex-rock-slate | pitched roofs |
@@ -34,13 +34,18 @@ Library packages `tex-*` (base colour, normal, ORM maps), read from `D:\REPO\fer
 - Lane paint with worn alpha (white, yellow), crosswalk bars, stall ticks, stop bars.
 - Road decal atlas: oil stains, cracks, tar patches with torn edges, utility trench, round manhole cover, storm-drain inlet, skid marks.
 - Road-sign atlas after MUTCD shapes and colours: STOP, SPEED LIMIT 25, NO PARKING, ONE WAY, pedestrian crossing, DO NOT ENTER, ROAD CLOSED, FILM SET - NO ENTRY (the film-crew barrier boards), twelve street-name blades, parking meter face.
-- Shop boards (32 generic names), shop-window interiors (4), leaf cards for trees.
+- Shop boards (32 generic names), the painted window backdrops used by LOD1, leaf-cluster atlases for maple, elm and oak (`leaf_*_c.png`).
+- Trees (`trees_kit.py`, wind data in `TREES.md`): branching skeletons with bark, painted leaf-card clusters, six kit items, LOD pair each.
+- Real shop interiors for LOD0 (`interiors_kit.py`): rooms with floor, walls, ceiling, fluorescent fixtures, shelving with product fronts, counters, stools, mirrors, display cases, TV racks, washers, barber chairs, sofas ... chosen by shop type; window decals (OPEN, SALE, hours, posters), haze and grime on the glass.
+- Upper-floor window rooms (blinds, shades, curtains, lit/dark rooms; window air conditioners), wall art (ghost ads, wheat-paste posters, graffiti tags, rain streaks) on side walls and bulkheads (`textures_detail.py`).
+- Street wear (`street_decor.py`): litter, autumn leaves in gutters and on the walk, puddles, sidewalk cracks and utility lids, a second telephone/cable wire pair and service drops.
 - All geometry: buildings (36 street designs, 14 side-street designs, each as LOD0 and LOD1), street furniture (LOD pairs), road, kerbs, sidewalks, markings, wires, barriers, gas station.
 - Typeface for lettering: DejaVu Sans / Serif (Bitstream Vera derivative, free licence; copy shipped with matplotlib), drawn into the textures.
 
 ## Reproduce
 
     python -I art/street/textures_prep.py
+    python -I art/street/textures_detail.py
     blender -b -P art/street/stage_level.py     # street_level.glb + street_colliders.glb
     blender -b -P art/street/stage_kit.py       # street_kit.glb
     blender -b -P art/gas-station/build_gas.py  # gas_station.glb

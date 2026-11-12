@@ -460,9 +460,7 @@ def all_props():
         P[nm] = pair(fn)
     for kind in ('stop', 'speed25', 'nopark', 'oneway', 'xwalk', 'dne', 'blade_main_st', 'blade_elm_st', 'blade_oak_st', 'blade_mill_st', 'blade_church_st', 'blade_walnut_st'):
         P['RoadSign_' + kind] = pair(road_sign, kind)
-    for s in (1, 2, 3):
-        P[f'StreetTree{s}'] = pair(street_tree, s)
-        for lod in (0, 1):
-            P[f'StreetTree{s}'][lod].name = f'StreetTree{s}_LOD{lod}'
-            P[f'StreetTree{s}'][lod].data.name = f'StreetTree{s}_LOD{lod}'
+    import trees_kit as TK
+    for s in (1, 2, 3, 4, 5, 6):                                  # maple, elm, oak in summer green; maple, elm, oak in autumn colours (trees_kit.py, TREES.md)
+        P[f'StreetTree{s}'] = {lod: TK.build_tree(lod, s) for lod in (0, 1)}
     return P

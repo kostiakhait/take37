@@ -463,16 +463,126 @@ def leaves():
     im.save(OUT / 'leaves_c.png')
 
 
+# ---- tree leaves: painted leaf clusters, one 1024 x 1024 atlas per species, 2 x 2 cells of 512 (green, yellow-green, gold, red / russet) ------------------------------------
+LEAF_PAL = {
+    'maple': [((58, 98, 38), (74, 112, 40)), ((88, 120, 40), (110, 138, 48)), ((206, 160, 44), (226, 186, 70)), ((178, 62, 30), (214, 110, 36))],
+    'elm': [((70, 106, 40), (86, 122, 46)), ((98, 128, 46), (120, 146, 56)), ((200, 172, 62), (222, 196, 90)), ((176, 134, 52), (198, 160, 66))],
+    'oak': [((60, 88, 36), (76, 104, 42)), ((82, 104, 40), (100, 120, 46)), ((156, 98, 42), (184, 126, 56)), ((142, 54, 36), (170, 84, 40))],
+}
+
+
+def leaf_outline(kind, r):
+    """Leaf outline in unit coordinates: petiole at the origin, blade along +x (length about 1), width in y. Returns a list of (x, y), and vein segments."""
+    pts, veins = [], []
+    if kind == 'maple':                                   # palmate, five pointed lobes with teeth
+        tips = [(-76, 0.72), (-38, 0.92), (0, 1.0), (38, 0.92), (76, 0.72)]
+        notch = 0.62
+        poly = [(0.04, 0.0)]
+        for i, (a, rr) in enumerate(tips):
+            if i:
+                am = (tips[i - 1][0] + a) / 2
+                poly.append((0.40 + notch * 0.55 * np.cos(np.radians(am)), notch * 0.75 * np.sin(np.radians(am))))
+            for j in range(3):                            # a lobe: two teeth up to the point
+                aa = a + (j - 1) * 13
+                rl = rr * (1.0 if j == 1 else 0.78)
+                poly.append((0.40 + rl * 0.62 * np.cos(np.radians(aa)), rl * 0.62 * np.sin(np.radians(aa)) * 1.25))
+        poly.append((0.04, 0.0))
+        pts = [(x * 1.0, y) for x, y in poly]
+        for a, rr in tips:
+            veins.append(((0.04, 0.0), (0.40 + rr * 0.55 * np.cos(np.radians(a)), rr * 0.55 * np.sin(np.radians(a)))))
+    else:
+        n = 36
+        xs = np.linspace(0, 1, n)
+        if kind == 'elm':                                 # ovate, doubly serrated, one side lower at the base
+            w = 0.46 * np.sin(np.pi * xs ** 0.78) ** 0.85
+            w = w * (1 + 0.07 * (((xs * 16) % 1.0) - 0.5))
+            up, dn = w * 1.06, w * 0.88
+        else:                                             # oak: obovate with rounded lobes
+            w = 0.40 * np.sin(np.pi * xs ** 0.9) ** 0.8 * (0.62 + 0.38 * np.abs(np.cos(np.pi * 4.5 * xs + 0.6)))
+            up, dn = w, w * 0.96
+        pts = [(x, y) for x, y in zip(xs, up)] + [(x, -y) for x, y in zip(xs[::-1], dn[::-1])]
+        veins.append(((0.0, 0.0), (0.96, 0.0)))
+        for k in range(1, 8):
+            x = k * 0.115
+            wk = np.interp(x, xs, w)
+            veins.append(((x, 0.0), (x + 0.12, wk * 0.85)))
+            veins.append(((x, 0.0), (x + 0.12, -wk * 0.85)))
+    return pts, veins
+
+
+def leaf_cell(kind, pal, seed, S=512, ss=2, autumn_mix=0.0, other=None):
+    """One cluster picture: a disc of overlapping leaves in three depth layers (back darker), vein lines, edges; alpha holes between leaves."""
+    r = np.random.default_rng(seed)
+    N = S * ss
+    rgb = Image.new('RGB', (N, N), tuple(int(c) for c in pal[0]))
+    al = Image.new('L', (N, N), 0)
+    dr, da = ImageDraw.Draw(rgb), ImageDraw.Draw(al)
+    L0 = {'maple': 52, 'elm': 42, 'oak': 46}[kind] * ss
+    layers = [(0.55, 190), (0.78, 160), (1.0, 140)]
+    for shade, count in layers:
+        for _ in range(count):
+            ang = r.uniform(0, 2 * np.pi)
+            rmax = (0.33 + 0.09 * np.sin(3 * ang + seed) + 0.05 * np.sin(5 * ang + 2 * seed) + 0.04 * np.sin(2 * ang - seed)) * N
+            rad = (r.random() ** 0.8) * rmax
+            cx, cy = N / 2 + rad * np.cos(ang), N / 2 + rad * np.sin(ang)
+            la = r.uniform(0, 2 * np.pi)
+            sc = L0 * r.uniform(0.8, 1.2)
+            sy = r.uniform(0.55, 1.0)
+            pts, veins = leaf_outline(kind, r)
+            ca, sa = np.cos(la), np.sin(la)
+            tr = lambda p: (cx + (p[0] - 0.45) * sc * ca - p[1] * sc * sy * sa, cy + (p[0] - 0.45) * sc * sa + p[1] * sc * sy * ca)  # noqa: E731
+            base, hi = pal
+            if other is not None and r.random() < autumn_mix:
+                base, hi = other
+            t = r.random()
+            col = np.array(base) * (1 - t) + np.array(hi) * t
+            col = col * shade * r.uniform(0.88, 1.1) * 1.0
+            poly = [tr(p) for p in pts]
+            dr.polygon(poly, fill=tuple(int(c) for c in col))
+            da.polygon(poly, fill=255)
+            dr.line(poly + [poly[0]], fill=tuple(int(c * 0.78) for c in col), width=max(1, ss))
+            vc = tuple(int(min(255, c * 1.22 + 10)) for c in col)
+            for a, b in veins:
+                dr.line([tr(a), tr(b)], fill=vc, width=max(1, ss))
+            dr.line([tr((0.0, 0.0)), tr((-0.18, 0.0))], fill=tuple(int(c * 0.8) for c in col), width=ss)      # petiole
+    # light falloff: the rim of the disc a little darker, a soft top light
+    arr = np.asarray(rgb).astype(np.float32)
+    yy, xx = np.mgrid[0:N, 0:N]
+    rr = np.sqrt((xx - N / 2) ** 2 + (yy - N / 2) ** 2) / (N / 2)
+    arr *= (1.0 - 0.18 * np.clip(rr, 0, 1) ** 2)[..., None]
+    arr *= (0.9 + 0.2 * (1 - yy / N))[..., None]
+    arr *= (0.9 + 0.2 * tileable_noise(N, 1.2, seed))[..., None]
+    rgb = Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8))
+    a8 = np.asarray(al).astype(np.float32) / 255.0
+    a8 = a8 * np.clip((1.0 - rr) * 14, 0, 1)                   # nothing on the cell border
+    rgb = rgb.resize((S, S), Image.LANCZOS)
+    alpha = Image.fromarray((np.clip(a8, 0, 1) * 255).astype(np.uint8)).resize((S, S), Image.LANCZOS)
+    out = rgb.convert('RGBA')
+    out.putalpha(alpha)
+    return out
+
+
+def tree_leaves():
+    for kind, pals in LEAF_PAL.items():
+        A = Image.new('RGBA', (1024, 1024), (0, 0, 0, 0))
+        for i, pal in enumerate(pals):
+            other = None
+            mix = 0.0
+            if i == 2:
+                other, mix = pals[0], 0.22
+            if i == 3:
+                other, mix = pals[2], 0.3
+            cell = leaf_cell(kind, pal, {'maple': 100, 'elm': 200, 'oak': 300}[kind] + i, autumn_mix=mix, other=other)
+            A.alpha_composite(cell, ((i % 2) * 512, (i // 2) * 512))
+        A.save(OUT / f'leaf_{kind}_c.png')
+
+
+STEPS = [('lib', lambda: (unpack(), lib_variants())), ('asphalt', asphalt), ('sidewalk', sidewalk), ('clapboard', clapboard), ('paint', paint), ('decals', decals), ('signs', signs),
+         ('shopsigns', shop_signs), ('interiors', interiors), ('leaves', leaves), ('treeleaves', tree_leaves)]
+
 if __name__ == '__main__':
-    unpack()
-    lib_variants()
-    asphalt()
-    sidewalk()
-    clapboard()
-    paint()
-    decals()
-    signs()
-    shop_signs()
-    interiors()
-    leaves()
+    only = arg('--only', '')
+    for nm, fn in STEPS:
+        if not only or nm in only.split(','):
+            fn()
     print('textures in', OUT, len(list(OUT.glob('*'))))

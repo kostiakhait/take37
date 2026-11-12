@@ -25,6 +25,7 @@ import buildings as B  # noqa: E402
 import kitlib as K  # noqa: E402
 import props_kit as PK  # noqa: E402
 import street_geo as G  # noqa: E402
+import street_decor as SD  # noqa: E402
 
 argv = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
 arg = lambda k, d=None: argv[argv.index(k) + 1] if k in argv else d  # noqa: E731
@@ -35,6 +36,7 @@ KIT = arg('--kit', str(HERE / 'street_kit.glb'))
 COLS = arg('--cols', str(HERE / 'street_colliders.glb'))
 LITE = '--lite' in argv                    # skip buildings (quick road checks)
 rnd = random.Random(1987)
+trnd = random.Random(37)        # tree species: its own stream, so the rest of the layout keeps its random sequence
 STATS = {}
 
 
@@ -265,7 +267,8 @@ def main():
         x = G.L0 + 8 + (6 if side == -1 else 0)
         while x < G.L1 - 5:
             if not on_cross_side(x, side, 16) and not in_gas(x, side, 3) and all(abs(x - lx) > 3.0 for lx in lamp_x[side]):
-                place(f'StreetTree{rnd.randint(1, 3)}', x, side * 7.3, rnd.uniform(0, 6.28), dest=False)
+                rnd.randint(1, 3)
+                place(f'StreetTree{trnd.choice([1, 1, 2, 2, 2, 3, 3, 4, 5, 6])}', x, side * 7.3, rnd.uniform(0, 6.28), dest=False)
                 tree_x[side].append(x)
             x += 17.0
         # meters: one per parking stall, 0.3 m behind the kerb face line at the middle of the stall
@@ -302,7 +305,7 @@ def main():
                 sag = 0.45 * 4 * t * (1 - t)
                 pts.append((xa + (xb - xa) * t, 6.75 + yo, zo - sag + 0.12))
             wm.tube(pts, 0.009, 'cable', seg=4, caps=False)
-        # a service drop from every pole's transformer to the building line
+    SD.add_wires(wm, pole_x)
     wo = wm.build('Wires', collection=c_static, parent=g_static)
     wo['static'] = 1
     # mailboxes, news boxes, benches, bins, phone booths, planters near the shops: along the building-side of each walk, away from tree pits
@@ -392,6 +395,11 @@ def main():
                 npk[side] += 1
             x += 6.6
     STATS['parking'] = dict(npk)
+    bins = [(e.location.x, 1 if e.location.y > 0 else -1) for e in g_dest.children if e.get('kind') in ('Bin', 'TrashBags', 'NewsBox')]
+    dec_objs, dec_n = SD.add_decor(c_static, g_static, G.GAS, tree_x, bins)
+    STATS['decor'] = dec_n
+    STATS['decor_tris'] = sum(K.tris(o) for o in dec_objs)
+    log('decor', dec_n)
     # markers
     K.empty('SPAWN_Player', loc=(30, -1.7, 0), rot=(0, 0, 0), parent=g_mark, collection=c_mark, size=1.5)
     K.empty('SPAWN_Pursuit', loc=(12, -1.7, 0), rot=(0, 0, 0), parent=g_mark, collection=c_mark, size=1.5)

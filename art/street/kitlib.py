@@ -41,6 +41,12 @@ MATS = {
     'decals': dict(tex='decals', tile=1.0, mode='BLEND', rough=0.8, uv='explicit'), 'signs': dict(tex='signs', tile=1.0, mode='CLIP', rough=0.35, metal=0.0, uv='explicit'),
     'shopsigns': dict(tex='shopsigns', tile=1.0, rough=0.4, uv='explicit'), 'interiors': dict(tex='interiors', tile=1.0, rough=0.9, uv='explicit', emit=((255, 255, 255), 0.5, 'tex')),
     'leaves': dict(tex='leaves', tile=1.0, mode='CLIP', rough=0.8, uv='explicit'),
+    'leaf_maple': dict(tex='leaf_maple', tile=1.0, mode='CLIP', rough=0.7, uv='explicit'), 'leaf_elm': dict(tex='leaf_elm', tile=1.0, mode='CLIP', rough=0.7, uv='explicit'),
+    'leaf_oak': dict(tex='leaf_oak', tile=1.0, mode='CLIP', rough=0.7, uv='explicit'),
+    'glass_shop': dict(color=(205, 220, 225), rough=0.1, metal=0.0, alpha=0.07, mode='BLEND', ior=1.5),
+    'shopwall': dict(color=(228, 218, 192), rough=0.8, metal=0.0, emit=((228, 218, 192), 0.9)),
+    'shopfloor': dict(color=(168, 140, 100), rough=0.5, metal=0.0, emit=((168, 140, 100), 0.6)),
+    'redband': dict(color=(176, 16, 22), rough=0.4, metal=0.0),
     'glass': dict(color=(170, 195, 205), rough=0.04, metal=0.0, alpha=0.22, mode='BLEND', ior=1.5),
     'glass_dirty': dict(color=(160, 175, 180), rough=0.2, metal=0.0, alpha=0.42, mode='BLEND', ior=1.5),
     'rubber': dict(color=(24, 24, 24), rough=0.85, metal=0.0), 'tar': dict(color=(14, 14, 15), rough=0.9, metal=0.0),
@@ -49,8 +55,38 @@ MATS = {
     'green_lens': dict(color=(20, 180, 90), rough=0.1, metal=0.0, emit=((20, 255, 110), 0.4)),
     'chrome': dict(color=(220, 222, 225), rough=0.12, metal=1.0), 'cable': dict(color=(14, 14, 14), rough=0.7, metal=0.0),
     'white_plastic': dict(color=(228, 228, 224), rough=0.35, metal=0.0, tex=None), 'sun_paper': dict(color=(230, 215, 150), rough=0.9, metal=0.0),
+    'pumpface': dict(tex='pumpface', tile=1.0, rough=0.3, uv='explicit'), 'pumphead': dict(tex='pumphead', tile=1.0, rough=0.35, uv='explicit', emit=((255, 255, 255), 0.2, 'tex')),
+    'pricesign': dict(tex='pricesign', tile=1.0, rough=0.35, uv='explicit', emit=((255, 255, 255), 0.12, 'tex')), 'shopfascia': dict(tex='shopfascia', tile=1.0, rough=0.35, uv='explicit', emit=((255, 255, 255), 0.15, 'tex')),
+    'decor': dict(tex='decor', tile=1.0, mode='CLIP', rough=0.4, uv='explicit'), 'oilcan': dict(tex='oilcan', tile=1.0, rough=0.4, uv='explicit'),
+    'goods': dict(tex='paint_white', tile=1.0, rough=0.5, metal=0.0), 'fluor': dict(color=(255, 252, 240), rough=0.3, metal=0.0, emit=((255, 250, 235), 3.0)),
     'flame': dict(color=(255, 120, 20), rough=1.0, metal=0.0, emit=((255, 110, 20), 8.0)),
 }
+# ---- interiors, wall art, litter (textures_detail.py); interior surfaces carry a little emission of their own so that the room reads as lit without any light probes -----------------
+_E = lambda s: ((255, 255, 255), s, 'tex')  # noqa: E731
+MATS.update({
+    'shelfgoods': dict(tex='goods', tile=1.0, rough=0.55, uv='explicit', emit=_E(0.5)),
+    'wincontent': dict(tex='wincontent', tile=1.0, rough=0.9, uv='explicit', emit=_E(0.35)),
+    'windecals': dict(tex='windecals', tile=1.0, mode='BLEND', rough=0.3, uv='explicit', emit=_E(0.5)),
+    'wallart': dict(tex='wallart', tile=1.0, mode='BLEND', rough=0.9, uv='explicit'),
+    'litter': dict(tex='litter', tile=1.0, mode='BLEND', rough=0.85, uv='explicit'),
+    'puddle': dict(tex='puddle', tile=1.0, mode='BLEND', rough=0.03, uv='explicit'),
+    'floor_tile': dict(tex='floor_tile', tile=2.4, rough=0.35, emit=_E(0.35)), 'floor_tile2': dict(tex='floor_tile2', tile=2.4, rough=0.35, emit=_E(0.35)),
+    'int_cream': dict(tex='plaster_cream', tile=2.0, emit=_E(0.4)), 'int_sage': dict(tex='plaster_sage', tile=2.0, emit=_E(0.4)), 'int_rose': dict(tex='plaster_rose', tile=2.0, emit=_E(0.4)),
+    'int_grey': dict(tex='plaster_grey', tile=2.0, emit=_E(0.4)), 'int_ceil': dict(tex='plaster_white', tile=2.0, emit=_E(0.45)),
+    'int_oak': dict(tex='wood_oak', tile=1.0, emit=_E(0.3)), 'int_dark': dict(tex='wood_dark', tile=1.0, emit=_E(0.3)), 'int_brown': dict(tex='wood_brown', tile=1.0, emit=_E(0.3)),
+    'int_pine': dict(tex='wood_pine', tile=1.0, emit=_E(0.3)),
+    'formica': dict(color=(226, 222, 208), rough=0.3, metal=0.0, emit=((226, 222, 208), 0.25)), 'velvet': dict(color=(70, 22, 34), rough=0.95, metal=0.0, emit=((70, 22, 34), 0.2)),
+    'leather': dict(color=(110, 40, 30), rough=0.5, metal=0.0, emit=((110, 40, 30), 0.15)), 'fabric_blue': dict(color=(70, 90, 130), rough=0.9, metal=0.0, emit=((70, 90, 130), 0.2)),
+    'fabric_green': dict(color=(80, 110, 80), rough=0.9, metal=0.0, emit=((80, 110, 80), 0.2)), 'fabric_ochre': dict(color=(190, 150, 70), rough=0.9, metal=0.0, emit=((190, 150, 70), 0.2)),
+    'mirror': dict(color=(205, 210, 215), rough=0.03, metal=1.0), 'fluor_int': dict(color=(255, 250, 235), rough=0.3, metal=0.0, emit=((255, 246, 225), 4.0)),
+    'tvscreen': dict(color=(120, 160, 210), rough=0.1, metal=0.0, emit=((140, 180, 255), 1.6)), 'brass': dict(color=(200, 160, 70), rough=0.25, metal=1.0),
+    'gold': dict(color=(240, 195, 80), rough=0.2, metal=1.0), 'plant': dict(color=(50, 100, 45), rough=0.8, metal=0.0, emit=((50, 100, 45), 0.2)),
+    'petal_red': dict(color=(200, 40, 50), rough=0.7, metal=0.0, emit=((200, 40, 50), 0.2)), 'petal_yellow': dict(color=(240, 200, 50), rough=0.7, metal=0.0, emit=((240, 200, 50), 0.2)),
+    'petal_pink': dict(color=(235, 130, 170), rough=0.7, metal=0.0, emit=((235, 130, 170), 0.2)), 'petal_white': dict(color=(240, 238, 230), rough=0.7, metal=0.0, emit=((240, 238, 230), 0.2)),
+    'enamel_white': dict(color=(238, 238, 234), rough=0.25, metal=0.0, emit=((238, 238, 234), 0.25)), 'lampshade': dict(color=(250, 225, 170), rough=0.8, metal=0.0, emit=((255, 225, 160), 1.2)),
+    'rug_red': dict(color=(120, 40, 40), rough=1.0, metal=0.0, emit=((120, 40, 40), 0.2)), 'poster_int': dict(tex='windecals', tile=1.0, rough=0.5, uv='explicit', emit=_E(0.4)),
+})
+
 for _k, _v in MATS.items():                  # painted metals: a quieter bump, larger repeat
     if _k.startswith('paint_') or _k in ('steel', 'black_metal'):
         _v.setdefault('nstr', 0.3)
@@ -220,7 +256,8 @@ def export_glb(objs, path, jpeg=True):
     bpy.context.view_layer.objects.active = objs[0]
     bpy.ops.export_scene.gltf(filepath=str(path), export_format='GLB', use_selection=True, export_yup=True, export_apply=False, export_extras=True, export_cameras=False,
                               export_lights=False, export_image_format='JPEG' if jpeg else 'AUTO', export_jpeg_quality=86, export_texcoords=True, export_normals=True,
-                              export_materials='EXPORT', export_vertex_color='ACTIVE', export_active_vertex_color_when_no_material=True, export_animations=False)
+                              export_materials='EXPORT', export_vertex_color='ACTIVE', export_active_vertex_color_when_no_material=True, export_animations=False,
+                              export_attributes=True)
 
 
 def descendants(root):

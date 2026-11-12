@@ -44,7 +44,8 @@ def main():
     sc.cycles.device = 'GPU'
     sc.cycles.samples = int(arg('--samples', '48'))
     sc.cycles.use_denoising = True
-    sc.cycles.transparent_max_bounces = 12
+    sc.cycles.transparent_max_bounces = int(arg('--tb', '12'))
+    sc.cycles.max_bounces = int(arg('--mb', '4'))
     sc.render.resolution_x, sc.render.resolution_y = int(arg('--w', '1280')), int(arg('--h', '720'))
     sc.view_settings.view_transform = 'AgX'
     sc.view_settings.look = 'AgX - Base Contrast'
