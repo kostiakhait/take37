@@ -127,3 +127,5 @@ Cages: one in the middle of the mole, one at its end. The steamer comes alongsid
 Steamer route (owner's correction): as the destroyer in the Dunkirk sample, the steamer comes in from the end of the mole, so it reaches the END cage first, then the MIDDLE one. If a cage was not pushed aboard, the steamer goes back to the end and returns once more: each extra pass is a score penalty for the scene. (Replaces the earlier "middle then end" reading.)
 
 Penalties (waiting, extra steamer passes) are shown to the player only through the director's reaction; they are subtracted from the scene's points, which stay hidden. No counter.
+
+Director during takes (all scenes): he shouts and gestures along the way, reacting to what happens (hurry, praise, despair). LOWER PRIORITY by the owner's explicit order (2026-11-12): built after everything else; the director's reaction after the take stays as planned.
