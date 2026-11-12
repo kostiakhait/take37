@@ -148,6 +148,7 @@ class Tree:
             return 0.0
         d = V((q.x, q.y, q.z * 1.3)).normalized()
         lump = 1.0 + self.lump * (2.0 * K.fbm(d * 1.6 + V((self.nseed, 0, 0)), 3, 1.0) - 1.0) * 1.6
+        lump += 0.23 * (2.0 * K.fbm(d * 4.3 + V((0, self.nseed, 0)), 7, 1.0) - 1.0)         # sub-lobes of about a metre: the outline is made of leaf masses, not one smooth bulge
         return r / max(0.5, lump)
 
     def outward(self, p):
@@ -366,8 +367,13 @@ class Tree:
             for _ in range(per_cluster):
                 base = P + V((rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(-0.6, 0.6))) * 0.45 * cl['sz']
                 e = self.env(base)
+                if e > 0.78 and rnd.random() < 0.8 and K.fbm(base * 0.55 + V((self.nseed * 2.0, 0, 0)), 11, 1.0) < 0.47:
+                    continue                                                           # a bay in the outline: sky shows through the rim of the crown
                 if e > 1.05:
                     base = self.C + (base - self.C) / e * 1.05
+                tuft = e > 0.85 and rnd.random() < 0.3                                 # a small leaf mass standing out of the rim
+                if tuft:
+                    base = base + (base - self.C).normalized() * rnd.uniform(0.3, 0.75)
                 radial = (base - self.C).normalized() if (base - self.C).length > 1e-6 else V((0, 0, 1))
                 up = (radial * 0.75 + bdir * 0.5 + V((rnd.gauss(0, 0.45), rnd.gauss(0, 0.45), rnd.gauss(0, 0.35))) + V((0, 0, 0.25 - sp['droop']))).normalized()
                 face = radial.cross(up)
@@ -377,7 +383,7 @@ class Tree:
                 if face.dot(radial) < 0:
                     face = -face
                 uax = up.cross(face).normalized()
-                s = sp['card'] * size_mul * rnd.uniform(0.85, 1.2) * cl['sz'] ** 0.3
+                s = sp['card'] * size_mul * rnd.uniform(0.85, 1.2) * cl['sz'] ** 0.3 * (0.62 if tuft else 1.0)
                 rect = rect_pool[rnd.randrange(len(rect_pool))]
                 depth = min(1.0, (base - self.C).length / max(self.R.x, 1e-3))
                 tier = max(0.0, min(1.0, (base.z - (self.C.z - self.R.z)) / (2 * self.R.z)))
@@ -449,7 +455,7 @@ def build_tree(lod, tree_no):
     sp = T.sp
     pool = [(0.004, 0.504, 0.496, 0.996), (0.504, 0.504, 0.996, 0.996), (0.004, 0.004, 0.496, 0.496), (0.504, 0.004, 0.996, 0.496)]     # the four sprig variants of the atlas
     T.emit_wood(3 if lod == 0 else 2)
-    per, mul = (6, 1.0) if lod == 0 else (3, 1.7)
+    per, mul = (6, 1.0) if lod == 0 else (4, 1.4)
     T.emit_leaves(per, mul, pool)
     T.emit_core(140 if lod == 0 else 40, mul, pool)
     name = f'StreetTree{tree_no}_LOD{lod}'

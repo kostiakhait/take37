@@ -128,10 +128,32 @@ def window_upper(m, y, zc, w, h, x0, hi, spec, rnd, lit):
             m.box(x0 - 0.14, y - 0.34, z0 + 0.05, x0 + 0.5, y + 0.34, z0 + 0.12, 'paint_white')
 
 
+def glass_depth(m, xg, a, b, zb, zt, rnd):
+    """What makes a shop window read at 50-200 m: a dark tint over the whole pane (the room behind looks deep), a shade band under the lintel, two slanted sky-reflection streaks,
+    and a light stone sill that projects over the bulkhead (a bright line under the dark glass). All in front of the glass pane, behind the window decals."""
+    fr = 0.06
+    ya, yb = a + fr, b - fr
+    za, zz = zb + fr, zt - fr
+    m.quad((xg + 0.002, yb, za), (xg + 0.002, ya, za), (xg + 0.002, ya, zz), (xg + 0.002, yb, zz), 'glass_tint', out=(1, 0, 0))
+    m.quad((xg + 0.003, yb, zz - 0.55), (xg + 0.003, ya, zz - 0.55), (xg + 0.003, ya, zz), (xg + 0.003, yb, zz), 'glass_shade', out=(1, 0, 0))
+    w = yb - ya
+    h = zz - za
+    sh = h * 0.55                                           # horizontal shift of a streak from bottom to top
+    for (f0, f1) in ((0.12 + rnd.random() * 0.2, 0.2), (0.55 + rnd.random() * 0.25, 0.1)):
+        wd = max(0.12, w * f1 * 0.5)
+        y0b = ya + w * f0
+        pb = [y0b, y0b + wd, y0b + wd - sh, y0b - sh]       # bottom-left, bottom-right, top-right, top-left
+        c = [min(max(v, ya), yb) for v in pb]
+        if c[1] - c[0] < 0.03 and c[2] - c[3] < 0.03:
+            continue
+        m.quad((xg + 0.004, c[1], za), (xg + 0.004, c[0], za), (xg + 0.004, c[3], zz), (xg + 0.004, c[2], zz), 'glass_refl', out=(1, 0, 0))
+    m.box(xg - 0.1, a - 0.04, zb - 0.012, xg + 0.36, b + 0.04, zb + 0.03, 'trim_white', bv=0.006)    # the sill: projects 4 cm past the stall-board cap and is light against the dark glass
+
+
 def window_dressing(m, xg, a, b, zb, zt, rnd, kind, W):
     """Glass dressing of one display window: haze at the bottom, grime, signs, a poster or two (windecals atlas, in front of the glass)."""
     xd = xg + 0.006
-    for (cell, zz0, zz1, al) in ((10, zb, zt, 1), (11, zb, zt, 1)):
+    for (cell, zz0, zz1, al) in ((10, zb, zb + 0.9, 1), (11, zb, zt, 1)):          # haze only low on the pane (it washed the whole window out at a distance)
         r = I.gcell(cell, 0.0)
         m.uvrect([(xd, a + 0.03, zz0 + 0.03), (xd, b - 0.03, zz0 + 0.03), (xd, b - 0.03, zz1 - 0.03), (xd, a + 0.03, zz1 - 0.03)], 'windecals', r, out=(1, 0, 0))
         xd += 0.0008
@@ -192,6 +214,7 @@ def shopfront(m, spec, hi, x0, y0, y1, rnd):
         # glass, set back 0.25
         xg = x0 - 0.22
         m.quad((xg, b, zb), (xg, a, zb), (xg, a, zt), (xg, b, zt), 'glass', out=(1, 0, 0))
+        glass_depth(m, xg, a, b, zb, zt, rnd)
         # frame: aluminium-wood mullions
         fr = 0.06
         m.box(xg - 0.02, a, zb, xg + 0.1, a + fr, zt, wood, bv=0.006 if hi else 0)
@@ -255,16 +278,22 @@ def shopfront(m, spec, hi, x0, y0, y1, rnd):
         a0, a1 = spec['awning']
         ay0, ay1 = y0 + 0.4, y1 - 0.4
         nst = max(2, int((ay1 - ay0) / 0.3)) if hi else max(2, int((ay1 - ay0) / 1.2))
+        nt0, nt1 = spec.get('ladder_notch', (1e9, 1e9))                                   # the fire-escape drop ladder comes down here: the canvas is cut away round it
         for i in range(nst):
-            ya, yb = ay0 + (ay1 - ay0) * i / nst, ay0 + (ay1 - ay0) * (i + 1) / nst
+            ya0, yb0 = ay0 + (ay1 - ay0) * i / nst, ay0 + (ay1 - ay0) * (i + 1) / nst
             mt = a0 if i % 2 == 0 else a1
-            m.face([(x0 + 0.1, yb, az0), (x0 + 0.1, ya, az0), (x0 + ad, ya, az1), (x0 + ad, yb, az1)], mt, out=(0.3, 0, 1))                      # top
-            m.face([(x0 + 0.1, ya, az0 - 0.02), (x0 + 0.1, yb, az0 - 0.02), (x0 + ad, yb, az1 - 0.02), (x0 + ad, ya, az1 - 0.02)], mt, out=(-0.3, 0, -1))  # underside
-            m.face([(x0 + ad, yb, az1), (x0 + ad, ya, az1), (x0 + ad + 0.03, ya, az1 - 0.3), (x0 + ad + 0.03, yb, az1 - 0.3)], mt, out=(1, 0, 0))      # valence
+            for (ya, yb) in (((ya0, min(yb0, nt0)), (max(ya0, nt1), yb0))):
+                if yb - ya < 0.02:
+                    continue
+                m.face([(x0 + 0.1, yb, az0), (x0 + 0.1, ya, az0), (x0 + ad, ya, az1), (x0 + ad, yb, az1)], mt, out=(0.3, 0, 1))                      # top
+                m.face([(x0 + 0.1, ya, az0 - 0.02), (x0 + 0.1, yb, az0 - 0.02), (x0 + ad, yb, az1 - 0.02), (x0 + ad, ya, az1 - 0.02)], mt, out=(-0.3, 0, -1))  # underside
+                m.face([(x0 + ad, yb, az1), (x0 + ad, ya, az1), (x0 + ad + 0.03, ya, az1 - 0.3), (x0 + ad + 0.03, yb, az1 - 0.3)], mt, out=(1, 0, 0))      # valence
         if hi:
             for yy in (ay0, ay1):
                 m.tube([(x0 + 0.1, yy, az0 - 0.05), (x0 + ad, yy, az1 - 0.05)], 0.015, 'black_metal', seg=5)
-            m.tube([(x0 + ad, ay0, az1 - 0.03), (x0 + ad, ay1, az1 - 0.03)], 0.012, 'black_metal', seg=5)
+            for (ya, yb) in ((ay0, min(ay1, nt0)), (max(ay0, nt1), ay1)):
+                if yb - ya > 0.05:
+                    m.tube([(x0 + ad, ya, az1 - 0.03), (x0 + ad, yb, az1 - 0.03)], 0.012, 'black_metal', seg=5)
     return dict(door=dpos, zt=zt, sz1=sz1)
 
 
@@ -283,6 +312,11 @@ def cornice(m, spec, hi, x0, y0, y1, ztop):
     else:
         m.box(x0 - 0.02, y0 - 0.25, ztop - 0.9, x0 + 0.5, y1 + 0.25, ztop, trim)
         m.box(x0 - 0.0, y0 - 0.25, ztop, x0 + 0.1, y1 + 0.25, ztop + 0.6, wall)
+
+
+def ladder_y(yc, n, pw=2.6):
+    """y of the drop ladder of a fire escape with n platforms centred at yc (the awning is cut away round it): at the end opposite the first stair flight's open end."""
+    return yc + (-1 if n >= 2 else 1) * (pw / 2 - 0.55)
 
 
 def fire_escape(m, hi, x0, yc, z_levels, ground=0.17):
@@ -352,8 +386,7 @@ def fire_escape(m, hi, x0, yc, z_levels, ground=0.17):
             m.tube([(xx, (ya + yb) / 2, (z0 + z1) / 2 + 0.5), (x0 + 0.02, (ya + yb) / 2, (z0 + z1) / 2 + 1.2)], 0.01, mat, seg=3, caps=False) if hi and xx > x0 + 0.5 else None
     # drop ladder from the lowest platform: fixed rails + sliding lower section reaching the walk; hangs outside the front rail, clear of the awning
     z0 = z_levels[0]
-    oe = open_end(0)
-    yl = yc + (-oe if oe else 1) * (pw / 2 - 0.55)
+    yl = ladder_y(yc, n, pw)
     xl = x0 + pd + 0.33
     mid = z0 - 0.07 - (z0 - ground) * 0.5
     for dy in (-0.2, 0.2):
@@ -446,6 +479,9 @@ def make_building(spec, lod):
     m.box(-0.0, y0 - 0.02, 0.0, 0.08, y1 + 0.02, 0.5, 'concrete', bv=0.015 if hi else 0, skip=('-x',))
     # --- shopfront and its sign
     rnd2 = random.Random(seed + 11)
+    if spec.get('fire_escape') and n >= 2 and wins:
+        yl_ = ladder_y(wins[0][0], n - 1)
+        spec = dict(spec, ladder_notch=(yl_ - 0.5, yl_ + 0.5))
     info = shopfront(m, spec, hi, 0.0, y0, y1, rnd2)
     # string course above the shop sign and between floors
     for fl in range(1, n + 1):
