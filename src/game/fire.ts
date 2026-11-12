@@ -36,6 +36,7 @@ export interface Store {
   /** the heat part of the wall and the gas inside */ wall?: Part; gas?: GasVolume; tankVolume: number; shellMass: number;
   exposed: number; failK: number; exploded: boolean; dose: number; blastKg: number; /** the chain depth of the fire */ depth: number;
   /** a burnt-out thing */ out: boolean; bursting?: boolean;
+  /** a hard rupture throws the fuel out as a spray: the cloud finds a spark and goes up at this time (s of the sim), -1 none */ cloudAt: number;
 }
 
 export class FireWorld {
@@ -52,7 +53,7 @@ export class FireWorld {
   }
 
   private add(s: Partial<Store> & { id: string; what: What; owner: string; at: () => Vec3; fuelKg: number }): Store {
-    const st: Store = { leakMax: 0, leaking: false, burning: false, ignitedAt: -1, igniteIn: -1, spark: false, power: 0, burnLeft: 0, tankVolume: 0, shellMass: 0, exposed: 0, failK: Infinity, exploded: false, dose: 0, blastKg: 0, depth: 0, out: false, ...s };
+    const st: Store = { leakMax: 0, leaking: false, burning: false, ignitedAt: -1, igniteIn: -1, spark: false, power: 0, burnLeft: 0, tankVolume: 0, shellMass: 0, exposed: 0, failK: Infinity, exploded: false, dose: 0, blastKg: 0, depth: 0, out: false, cloudAt: -1, ...s };
     this.stores.push(st); return st;
   }
   store(id: string) { return this.stores.find((s) => s.id === id); }
@@ -81,8 +82,8 @@ export class FireWorld {
       const before = this.stores.length;
       if (/^Pump_/.test(p.id)) this.add({ id: p.id, what: 'pump', owner: p.id, at, fuelKg: s.fuelL * 0.74 + PUMP_LINE_KG, leakMax: PUMP_LEAK });
       else if (s.explosive) {
-        const st = this.add({ id: p.id, what: 'propane', owner: p.id, at, fuelKg: 180, leakMax: 0.3, shellMass: 40, exposed: 4, failK: 700, blastKg: 180, tankVolume: 0.5 });
-        st.wall = this.net.addPart({ name: p.id, mass: 40, material: this.lib.get('steel'), T: 293.15, area: 4, h: 10, ambient: 293.15 });
+        const st = this.add({ id: p.id, what: 'propane', owner: p.id, at, fuelKg: 180, leakMax: 0.3, shellMass: 25, exposed: 4, failK: 700, blastKg: 180, tankVolume: 0.5 });
+        st.wall = this.net.addPart({ name: p.id, mass: 25, material: this.lib.get('steel'), T: 293.15, area: 4, h: 10, ambient: 293.15 });
         st.gas = new GasVolume({ moles: 60, temperature: 293.15, volume: 0.5, molarMass: 0.044, gamma: 1.13 }); this.links.push(gasInPart(st.gas, st.wall, this.net, 15));
       } else if (p.id === 'Canopy') this.add({ id: p.id, what: 'canopy', owner: p.id, at, fuelKg: 260, leakMax: 0.1 });
       else if (/^CanopyColumn/.test(p.id)) { const st = this.add({ id: p.id, what: 'column', owner: p.id, at, fuelKg: 0, shellMass: 200, exposed: 4.3, failK: 750 }); st.wall = this.net.addPart({ name: p.id, mass: 200, material: this.lib.get('steel'), T: 293.15, area: 6, h: 10, ambient: 293.15 }); }
@@ -112,6 +113,8 @@ export class FireWorld {
     const p = Math.min(0.4, joules / 600e3) + (speed > 22 ? 0.25 : 0);
     if (st.what !== 'car' || this.sim.rng.chance(p)) { st.spark = true; st.igniteIn = this.sim.rng.range(0.3, 2.5); }
     st.depth = this.sim.depthOf(this.sim.cars.find((c) => c.id === st.owner)?.hitBy ?? null);
+    // a hard hit on a loaded tank (more than 300 kJ of crushing, or over 15 m/s) throws the petrol out as a fine spray; the cloud meets the sparks of the scraping metal within 3 to 7 s and burns as a vapour cloud explosion
+    if (st.what === 'tanker' && st.blastKg > 0 && (joules > 300e3 || speed > 15)) st.cloudAt = this.sim.t + this.sim.rng.range(3, 7);
   }
   ignite(st: Store, depth = 0) {
     if (st.burning || st.out) return;
@@ -159,6 +162,11 @@ export class FireWorld {
         }
       }
     }
+    // the spray of a hard rupture goes up
+    for (const st of this.stores) if (st.cloudAt >= 0 && sim.t >= st.cloudAt && !st.exploded && !st.out) { st.cloudAt = -1; this.burst(st, 101325); }
+    // the canopy's roof burns through: ten seconds after it takes fire its framing lets go and it comes down on the pumps
+    const roof = this.stores.find((x) => x.what === 'canopy');
+    if (roof && roof.burning && sim.t - roof.ignitedAt > 10 && canopy && canopy.state === 'whole') for (const col of sim.props.filter((p) => /^CanopyColumn/.test(p.id))) if (col.state === 'whole') sim.throwProp(col, [0, 0, 0], 'Canopy', 'fell', roof.depth + 1);
     // spark ignition after its delay
     for (const st of this.stores) if (st.spark && !st.burning && st.igniteIn >= 0) { st.igniteIn -= dt; if (st.igniteIn <= 0) this.ignite(st, st.depth); }
     // fires: burn the fuel, radiate onto the others
@@ -177,7 +185,7 @@ export class FireWorld {
       if (t.out || t.exploded) continue;
       let q = 0; const at = t.at();
       for (const f of burning) { if (f === t) continue; q += this.flux(f.at(), f.power, t); }
-      if (t.wall) { t.wall.power = Math.min(q, ENGULF_FLUX) * t.exposed; if (t.burning && t.what === 'propane') t.wall.power += 0.5 * ENGULF_FLUX * t.exposed; /* its own leak fire plays on the cylinders (thin walls, a rack of small cylinders) */ }
+      if (t.wall) { t.wall.power = Math.min(q, ENGULF_FLUX) * t.exposed; if (t.burning && t.what === 'propane') t.wall.power += ENGULF_FLUX * t.exposed; /* its own leak fire plays on the cylinders (thin walls, a rack of small cylinders) */ }
       if (!t.burning) {
         const doseLimit = t.what === 'pump' ? 40e3 : CAR_IGNITE_FLUX, doseTime = t.what === 'pump' ? 3 : CAR_IGNITE_TIME, doses = t.what === 'car' || t.what === 'canopy' || t.what === 'pump';
         if (t.leaking && q > IGNITE_FLUX) this.ignite(t, this.chainDepth(burning) + 1);
