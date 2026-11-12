@@ -44,3 +44,4 @@ Every operation made to create the game: local time and description.
 | 2026-11-12 08:53 | Scene 2: the stuntman gets a submachine gun and a bazooka (owner's decision); recorded in PLAN.md. |
 | 2026-11-12 08:54 | Scene 2: the steamer for the cages is the library paddle steamer Princess Elizabeth (заимствовано из Феррета); the owner ordered it to be detailed far beyond the library level, exterior only. Recorded in PLAN.md; the detailing task is to be given to a modelling agent. |
 | 2026-11-12 08:55 | Scene 2: two separate cages (Arnold, Emily); both must be pushed onto the steamer or the scene does not count (owner's decision). |
+| 2026-11-12 08:55 | Scene 2: the paddle steamer must never sink (the film's ship); only the villain's ships sink and explode. |
