@@ -18,9 +18,9 @@ const SPECS = {
     { g: 'Hair__Hair_M_Layered', ...RED },
     { g: 'Eyebrows__Eyebrows_M_Natural', ...BR([0.14, 0.03, 0.01], [0.26, 0.07, 0.02]) }] },
   edward: { export: 'T37_Edward', scalp: [0.02, 0.015, 0.01], clothing: 'edward', grooms: [
-    { g: 'Hair__Hair_M_TwistedBraids', root: [0.018, 0.013, 0.009], tip: [0.045, 0.032, 0.022], step: 1, w: 0.0009, seg: 7 },
+    { g: 'Hair__Hair_M_TwistedBraids', root: [0.016, 0.012, 0.008], tip: [0.03, 0.022, 0.015], jitter: 0.15 },
     { g: 'Eyebrows__Eyebrows_M_Full', ...BR([0.02, 0.014, 0.01], [0.04, 0.03, 0.02]) }] },
-  emily: { export: 'T37_Emily', scalp: [0.35, 0.26, 0.1], clothing: process.env.DRESS ?? 'emilyA', grooms: [
+  emily: { export: 'Girl', scalp: [0.35, 0.26, 0.1], clothing: process.env.DRESS ?? 'emilyA', grooms: [
     { g: 'Hair__Hair_L_Straight', root: [0.3, 0.2, 0.07], tip: [0.62, 0.48, 0.2] },
     { g: 'Eyebrows__Eyebrows_M_SlightArch', ...BR([0.2, 0.13, 0.05], [0.3, 0.21, 0.09]) }] },
   vincent: { export: 'Walter', scalp: [0.3, 0.29, 0.27], clothing: 'vincent', grooms: [
