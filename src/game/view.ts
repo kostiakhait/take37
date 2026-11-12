@@ -9,6 +9,7 @@ import { ShardView, type MeshData, type ShardHost } from '@ferret/destruction/vi
 import type { DebrisPiece } from '@ferret/destruction/debris';
 import { CAR_KINDS, SET_CAMERAS, type KindId, type SetCamera } from './config';
 import type { Take } from './take';
+import { POLICE_CAB } from './carspec';
 import type { Car, Debris, SimEvent, Prop } from './sim';
 import type { NodeInfo } from '@ferret/destruction/autoparts';
 
@@ -49,7 +50,7 @@ export class GameView {
   constructor(readonly scene: BABYLON.Scene, readonly camera: BABYLON.UniversalCamera, private propNodes: Map<string, BABYLON.TransformNode>, private stationNodes: Map<string, BABYLON.TransformNode>, shadow: BABYLON.ShadowGenerator | null = null) {
     this.vfx.registerAll(FULL_CATALOG as never);
     this.fx = new FxDirector(this.vfx);
-    this.vfxView = new VfxBabylonView(scene, this.vfx, camera, { soft: true, supports: ['particles', 'impostor', 'dot'], parts: { maxLights: 6, groundHeight: () => 0, candelaScale: 1 / 9000, maxLightIntensity: 3.2 } } as never);
+    this.vfxView = new VfxBabylonView(scene, this.vfx, camera, { soft: true, supports: ['particles', 'impostor', 'dot'], parts: { maxLights: 6, groundHeight: () => 0, candelaScale: 1 / 40000, maxLightIntensity: 0.55 } } as never);
     const hemi = scene.lights.find((l) => l instanceof BABYLON.HemisphericLight) as BABYLON.HemisphericLight | undefined;
     if (hemi) { this.skyLight = hemi; this.skyBase = hemi.intensity; this.skyColor = hemi.diffuse.clone(); }
     // the effects' lights (up to six) must reach the street's materials: the default of a material is four lights in all
@@ -138,7 +139,7 @@ export class GameView {
     // the warm flash of a blast lights the whole street for a moment (the sky light, warmer and brighter)
     if (this.skyLight) {
       const f = this.fx.flashLevel(dt), L = this.skyLight;
-      if (f > 0.002) { if (!this.flashing) { this.flashing = true; this.skyBase = L.intensity; this.skyColor.copyFrom(L.diffuse); } L.intensity = this.skyBase * (1 + f * 0.7); BABYLON.Color3.LerpToRef(this.skyColor, new BABYLON.Color3(1, 0.62, 0.34), Math.min(0.5, f * 0.8), L.diffuse); }
+      if (f > 0.002) { if (!this.flashing) { this.flashing = true; this.skyBase = L.intensity; this.skyColor.copyFrom(L.diffuse); } L.intensity = this.skyBase * (1 + f * 0.35); BABYLON.Color3.LerpToRef(this.skyColor, new BABYLON.Color3(1, 0.62, 0.34), Math.min(0.5, f * 0.8), L.diffuse); }
       else if (this.flashing) { this.flashing = false; L.intensity = this.skyBase; L.diffuse.copyFrom(this.skyColor); }
     }
   }
@@ -218,7 +219,7 @@ export class GameView {
   }
   /** the material of a piece by what broke: glass is clear, wood brown, concrete grey, sheet metal dark */
   private pieceMat(id: string, part: string): BABYLON.Material {
-    const key = /^Facade/.test(id) ? 'brick' : /glass|window|pane|booth/i.test(part) || /PhoneBooth/.test(id) ? 'glass' : /Bench|Sawhorse|Pole/.test(id) ? 'wood' : /Planter/.test(id) ? 'concrete' : /Bin|Cone|NewsBox|TrashBags/.test(id) ? 'plastic' : 'metal';
+    const key = /^Facade/.test(id) ? 'brick' : /glass|window|pane|booth/i.test(part) || /PhoneBooth/.test(id) ? 'glass' : /Bench|Sawhorse|Pole|ShopDoor|ShopSign/.test(id) && !/glass/i.test(part) ? 'wood' : /Planter/.test(id) ? 'concrete' : /Bin|Cone|NewsBox|TrashBags/.test(id) ? 'plastic' : 'metal';
     let m = this.pieceMats.get(key);
     if (!m) {
       const p = new BABYLON.PBRMaterial('piece-' + key, this.scene); p.metallic = 0; p.roughness = 0.6; p.backFaceCulling = false;
@@ -334,7 +335,7 @@ export class GameView {
       cam.rotationQuaternion = lookQuat(want, BABYLON.Vector3.Up()).multiply(BABYLON.Quaternion.RotationYawPitchRoll(sk.r[0], sk.r[1], sk.r[2])); return;
     }
     const car = take.scene.player, v = car.veh;
-    const driver = v.toWorld([0.25, 1.12, 0.38]);
+    const driver = v.toWorld(POLICE_CAB.eye);   // the driver's eyes in the police cab (carspec.ts)
     cam.fov = 1.05; cam.minZ = 0.1;
     const fwd = qRot(v.rot, [1, 0, 0]), up = qRot(v.rot, [0, 1, 0]);
     // the body's attitude, smoothed, with the roll and the pitch toned down (a head does not follow every bump)

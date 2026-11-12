@@ -165,7 +165,7 @@ export class FxDirector {
     const pos = (dy = 0) => (out: V3) => { if (car && local) { const w = car.veh.toWorld(local); out[0] = w[0]; out[1] = w[1] + dy; out[2] = w[2]; } else { out[0] = at[0]; out[1] = at[1] + dy; out[2] = at[2]; } return true; };
     const ground = Math.max(0.05, at[1] - 1);
     if (e.what === 'tanker') {
-      const P = clamp(heat, 5e6, 1.1e8), D = clamp(2 * Math.sqrt(P / POOL_FLUX / Math.PI), 3, 12);
+      const P = clamp(heat, 5e6, 5e7), D = clamp(2 * Math.sqrt(P / POOL_FLUX / Math.PI), 3, 9);
       kind = 'fire.pool-petrol'; heat = P;
       main = this.spawn('fire.pool-petrol', [at[0], 0.6, at[2]], { heat: P, D }, { attach: pos(-1.3) });
     } else if (e.what === 'car') {
