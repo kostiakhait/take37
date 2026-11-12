@@ -18,7 +18,7 @@ Every replacement of the playable scene (src/game, src/play.ts) is listed here w
 
 ## The station on the street
 
-`art/gas-station/gas_station.glb` (full, with Pump_*, PriceSign, Canopy, CanopyColumn_*, PropaneCage, Fire_* markers) is loaded at `GasStation_Anchor` of the street, turned by +90 degrees about the vertical so that the file's +x (street edge to the shop) runs away from the road (the anchor's own rotation puts it onto the road). The light `gas_station_lite.glb` that `src/scene/set.ts` loads is not loaded in the game (the loader call is answered empty from `src/play.ts`, `set.ts` is not edited). The 36 x 68 m lot covers x 527.75..596.25, z -53.3..-9.3 and overlaps two street buildings (x 522.5..530.5) by 2.5 m at its back corner: it is the art's own size and position; the station art is not edited.
+`art/gas-station/gas_station.glb` (full, with Pump_*, PriceSign, Canopy, CanopyColumn_*, PropaneCage, Fire_* markers) is loaded at `GasStation_Anchor` of the street, turned by +90 degrees about the vertical so that the file's +x (street edge to the shop) runs away from the road (the anchor's own rotation puts it onto the road). The light `gas_station_lite.glb` is not loaded in the game: `src/play.ts` asks `buildSet` for `gas: 'none'` and `keepProps: true` (options added to `src/scene/set.ts` by its owner). The station is moved 2.5 m along the street (`STATION_SHIFT_X` in `src/game/layout.ts`) so that its 68.5 m lot sits in the middle of the 67 m gap between the two street buildings: the lot (x 530.3..598.8, z -53.3..-9.3) overlaps each building by 0.7-0.8 m of empty apron. No position avoids both overlaps because the lot is wider than the gap; the station art is not edited.
 
 ## Assumptions of the game (not art)
 

@@ -4,7 +4,7 @@ import type { NodeInfo } from '@ferret/destruction/autoparts';
 import { buildRoadCar, buildTanker } from './carspec';
 import { Sim, type Car } from './sim';
 import { FireWorld } from './fire';
-import { trafficDriver, vincentDriver, planVincent, type VincentPlan } from './ai';
+import { trafficDriver, vincentDriver, planVincent, holdLane, type VincentPlan } from './ai';
 import { TRAFFIC_KINDS, type KindId } from './config';
 import { Rng } from './rng';
 import type { Layout } from './layout';
@@ -36,12 +36,14 @@ export function buildScene1(layout: Layout, infos: KindInfos, seed: number, opts
     const kind = rng.pick(TRAFFIC_KINDS);
     car('park:' + s.id, 'parked', kind, s.x + rng.range(-0.3, 0.3), s.z + rng.range(-0.15, 0.15), s.dir === 1 ? 0 : Math.PI);
   }
-  // the tanker: slowly down the street ahead of the station, in the player's lane
-  const tanker = car('tanker', 'tanker', 'tanker', 455, -1.7, 0);
-  tanker.drive = trafficDriver(1, -1.7, 6.5); tanker.occupied = true;
+  // the tanker: rolling slowly to the station and standing in front of its forecourt, in the player's lane (it delivers fuel there), a few metres from the pumps' street edge
+  const stopX = layout.station.origin[0] - 8;
+  const tanker = car('tanker', 'tanker', 'tanker', stopX - 50, -1.7, 0);
+  tanker.drive = (c, sm) => { const x = c.veh.pos[0], v = c.veh.vel[0]; if (c.wrecked) { c.ctl.throttle = 0; c.ctl.brake = 0.3; return; } const want = Math.min(6, Math.max(0, (stopX - x) * 0.35)); holdLane(c, -1.7, want); void sm; void v; };
+  tanker.occupied = true;
   if (opts.traffic !== false) {
     let x = 75 + rng.range(0, 30), i = 0;
-    while (x < 590) { if (Math.abs(x - 455) > 28) { const k = rng.pick(TRAFFIC_KINDS), c = car('t+' + i++, 'traffic', k, x, -1.7 + rng.range(-0.15, 0.15), 0); c.drive = trafficDriver(1, -1.7, rng.range(9, 13)); c.occupied = true; } x += rng.range(90, 170); }
+    while (x < 590) { if (Math.abs(x - stopX) > 40) { const k = rng.pick(TRAFFIC_KINDS), c = car('t+' + i++, 'traffic', k, x, -1.7 + rng.range(-0.15, 0.15), 0); c.drive = trafficDriver(1, -1.7, rng.range(9, 13)); c.occupied = true; } x += rng.range(90, 170); }
     x = 40 + rng.range(0, 60); i = 0;
     while (x < 600) { const k = rng.pick(TRAFFIC_KINDS), c = car('t-' + i++, 'traffic', k, x, 1.7 + rng.range(-0.15, 0.15), Math.PI); c.drive = trafficDriver(-1, 1.7, rng.range(8, 13)); c.occupied = true; x += rng.range(230, 420); }
   }

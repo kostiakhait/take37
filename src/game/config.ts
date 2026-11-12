@@ -4,7 +4,7 @@
 export const BUDGET_START = 15_000_000;
 export const TAKE_COST = 1_000_000;
 /** the take time limit, s (a take that runs on without a result is spoiled) */
-export const TAKE_LIMIT = 150;
+export const TAKE_LIMIT = 240;
 /** the street: x of the end line (a car that crosses it has reached the end of the street) and the extent of the set */
 export const STREET_END_X = 612;
 export const SET_BOUNDS = { x0: -34, x1: 640, halfWidth: 24 };

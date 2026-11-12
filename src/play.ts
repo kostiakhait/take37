@@ -9,6 +9,7 @@ import { Hud, HUD_CSS } from './game/hud';
 import { CabAudio } from './game/audio';
 import { ACTIONS, BINDINGS, CAR_KINDS, FIXED_DT, type KindId } from './game/config';
 import { qRot } from '@ferret/destruction/vehicle';
+import { holdLane } from './game/ai';
 import type { KindInfos } from './game/scene1';
 
 /**
@@ -73,6 +74,15 @@ async function main() {
   let verdictShown = false, paused = false, acc = 0, yaw = 0, pitch = 0, idle = 0;
   if (take.phase !== 'over') begin();
 
+  const stepOnce = (i: PlayerInput) => {
+    take.step(i); take.siren = sirenOn; view.stepFx(FIXED_DT);
+    const evs = take.takeEvents(); view.push(evs);
+    for (const e of evs) { const at = (e as { at?: number[] }).at; if (at) audio.hear(e, Math.hypot(at[0]! - take.player.veh.pos[0], at[2]! - take.player.veh.pos[2])); }
+  };
+  /** for runs and tests: n fixed steps with the given input, without waiting for frames (the same step the frames use) */
+  const advance = (n: number, wish: Partial<PlayerInput> = {}) => { const i: PlayerInput = { gas: false, brake: false, steer: 0, handbrake: false, jump: false, cut: false, horn: false, siren: false, ...wish }; for (let k = 0; k < n; k++) { stepOnce(i); if (take.phase === 'choice' || take.phase === 'over') break; } };
+  /** the player's car held in its lane by the game's own lane keeping, at a speed: a stand-in hand for runs */
+  const autopilot = (on: boolean, speed = 20) => { take.player.drive = on ? (c) => holdLane(c, -1.7, speed) : undefined; };
   const inp: PlayerInput = { gas: false, brake: false, steer: 0, handbrake: false, jump: false, cut: false, horn: false, siren: false };
   let sirenOn = false;
   scene.onBeforeRenderObservable.add(() => {
@@ -93,9 +103,7 @@ async function main() {
       idle = Math.abs(lk.x) + Math.abs(lk.y) > 0.001 ? 0 : idle + FIXED_DT;
       if (idle > 1.2) { yaw *= 0.97; pitch *= 0.97; }
       yaw = Math.max(-2.0, Math.min(2.0, yaw)); pitch = Math.max(-0.7, Math.min(0.7, pitch));
-      take.step(inp); take.siren = sirenOn; view.stepFx(FIXED_DT);
-      const evs = take.takeEvents(); view.push(evs);
-      for (const e of evs) { const at = (e as { at?: number[] }).at; if (at) audio.hear(e, Math.hypot(at[0]! - take.player.veh.pos[0], at[2]! - take.player.veh.pos[2])); }
+      stepOnce(inp);
     }
     if (take.phase === 'verdict' && !verdictShown) { verdictShown = true; view.setView({ mode: 'set', set: view.bestSetCamera(take) }); }
     const car = take.player, f = qRot(car.veh.rot, [1, 0, 0]), v = car.veh.vel[0] * f[0] + car.veh.vel[2] * f[2];
@@ -104,7 +112,7 @@ async function main() {
     hud.update(take, v, paused, (a) => input.prompt(a));
   });
 
-  win.take37 = Object.assign(set, { take, view, layout, input, paused: () => paused, stationNodes, propNodes, begin, setPaused: (p: boolean) => { paused = p; } });
+  win.take37 = Object.assign(set, { take, view, layout, input, advance, autopilot, paused: () => paused, stationNodes, propNodes, begin, setPaused: (p: boolean) => { paused = p; } });
   win.take37Ready = true;
   void total;
   splash.hide();

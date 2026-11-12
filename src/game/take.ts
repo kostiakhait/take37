@@ -93,8 +93,8 @@ export class Take {
     const points = this.spec.total;
     if (points >= SCORE.wrapAt && this.thresholdAt < 0) this.thresholdAt = this.t;
     // calm: nothing scored for a while after the big moment
-    const calm = this.t - this.spec.lastAt > 7 && this.spec.lastAt > 0;
-    if (this.thresholdAt >= 0 && (calm || this.t - this.thresholdAt > 40)) return this.finish('wrap', 'spectacle');
+    const calm = this.t - this.spec.lastAt > 7 && this.spec.lastAt > 0 && this.scene.fire.fires < 3e6;
+    if (this.thresholdAt >= 0 && (calm || this.t - this.thresholdAt > 75)) return this.finish('wrap', 'spectacle');
     if (inp.cut) return this.finish(points >= SCORE.wrapAt ? 'wrap' : 'cut', 'self');
     const outside = (x: number, z: number) => x < SET_BOUNDS.x0 || x > SET_BOUNDS.x1 || Math.abs(z) > SET_BOUNDS.halfWidth;
     if (outside(p[0], p[2]) && !this.out) return this.finish('cut', 'left');
