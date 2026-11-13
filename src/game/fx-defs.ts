@@ -103,6 +103,53 @@ add({
   }
 }
 
+// ---- the look of the station fires (owner's pass): the catalogue's fires re-coloured and re-shaped by data. Art, all of it, on top of the catalogue's physics (flame height, rise speed, temperature follow `heat` and `D` as ever):
+//      orange flames that are dim at the root (the smoke in front of the glowing part hides it) and bright only at the tips, tongues of many heights (a wide range of speed, size and life, and a few tall thin ones), a thick tall
+//      smoke column (more and bigger puffs, more opaque, longer lived), a dim orange light, and the engine's soot decals laid in growing layers under the fire. ----
+type Loose = Record<string, unknown>;
+const ORANGE_RAMP = [{ at: 0, rgb: [0.9, 0.3, 0.05], alpha: 1 }, { at: 0.45, rgb: [0.95, 0.3, 0.04], alpha: 1 }, { at: 1, rgb: [0.45, 0.06, 0.02], alpha: 1 }];
+const scaleLead = (v: unknown, k: number): unknown => (typeof v === 'string' ? v.replace(/^[\d.]+\s*\*/, `${k} *`) : v);
+const times = (v: unknown, k: number): unknown => (Array.isArray(v) ? v.map((x) => times(x, k)) : typeof v === 'number' ? v * k : `(${String(v)}) * ${k}`);
+function station(baseName: string, name: string, seed: number, o: { glow: number; smoke: number; soot: boolean; tongues: boolean; sootSize: string }): void {
+  const base = FULL_CATALOG.find((d) => d.name === baseName) as unknown as (VfxDef & { emitters: Loose[] }) | undefined;
+  if (!base) return;
+  const d = JSON.parse(JSON.stringify(base)) as VfxDef & { emitters: Loose[]; light?: Loose; decals?: Loose[] };
+  d.name = name; d.seed = seed;
+  const extra: Loose[] = [];
+  for (const e of d.emitters) {
+    const r = e.render as Loose | undefined;
+    if (r?.flipbook === 'flame' && r.blend === 'add') {
+      // orange, dim in the lower part: the radiance factor is cut and the ramp starts at deep orange, not at pale yellow
+      r.emissive = scaleLead(r.emissive, o.glow); e.colorOverLife = ORANGE_RAMP;
+      if (e.name === 'flame' && o.tongues) {
+        // tongues of different heights: a wide spread of rise speed, size and life, plus a few tall narrow ones
+        const b = base.emitters.find((x) => x.name === 'flame')!, bv = b.velocity as { speed: unknown[] }, bs = b.size as unknown[], bl = b.lifetime as unknown[];
+        e.velocity = { ...bv, spread: 16, speed: [times(bv.speed[0], 0.45), times(bv.speed[1], 1.2)] };
+        e.size = [times(bs[0], 0.5), times(bs[1], 0.95)]; e.lifetime = [times(bl[0], 0.7), times(bl[1], 1.25)];
+        e.rate = `(${String(b.rate)}) * 1.1`; e.max = 400; e.alphaOverLife = [[0, 0], [0.12, 0.45], [0.8, 0.35], [1, 0]];
+        const tall = JSON.parse(JSON.stringify(e)) as Loose; tall.name = 'tongues'; tall.max = 90; tall.rate = 'clamp(5 * (D + 1), 2, 40)';
+        tall.velocity = { ...bv, spread: 6, speed: [times(bv.speed[1], 1.15), times(bv.speed[1], 1.7)] };
+        tall.size = [times(bs[0], 0.4), times(bs[1], 0.5)]; tall.lifetime = [times(bl[0], 1.2), times(bl[1], 1.7)];
+        (tall.render as Loose).emissive = scaleLead((tall.render as Loose).emissive, 0.8);
+        extra.push(tall);
+      }
+    } else if (e.name === 'smoke') {
+      // thick, high, fat and opaque: bigger puffs that grow to six times, a denser stream, longer life, a steeper rise
+      const b = base.emitters.find((x) => x.name === 'smoke')!, bv = b.velocity as { speed: unknown[] };
+      e.size = times(b.size, 1.7); e.sizeOverLife = [[0, 0.5], [0.4, 2.4], [1, 6.5]]; e.rate = `(${String(b.rate)}) * ${o.smoke}`; e.max = 1100;
+      e.lifetime = times(b.lifetime, 1.5); e.velocity = { ...bv, speed: [times(bv.speed[0], 1.2), times(bv.speed[1], 1.4)] };
+      e.alphaOverLife = [[0, 0], [0.08, 0.35], [0.2, 0.92], [0.7, 0.8], [1, 0]]; e.color = [0.035, 0.034, 0.033];
+    }
+  }
+  d.emitters.push(...extra);
+  if (d.light) { d.light.rgb = [1, 0.4, 0.1]; d.light.intensity = `(${String(d.light.intensity)}) * 0.3`; }
+  if (o.soot) d.decals = [0, 4, 10, 20, 35].map((at, i) => ({ kind: 'soot', size: `(${o.sootSize}) * ${(1 + i * 0.3).toFixed(2)}`, at, life: 900, fade: 120 }));
+  add(d as VfxDef);
+}
+station('fire.pool-petrol', 'take37.pump-fire', 3710, { glow: 0.4, smoke: 2.2, soot: true, tongues: true, sootSize: 'D * 1.1 + 1' });
+station('fire.building', 'take37.canopy-fire', 3711, { glow: 0.4, smoke: 1.8, soot: true, tongues: true, sootSize: 'D * 0.7 + 3' });
+station('fire.jet', 'take37.jet-fire', 3712, { glow: 0.75, smoke: 1, soot: false, tongues: false, sootSize: '1' });
+
 // ---- a flying burning piece: a trail of sparks and a thin stream of smoke, for a part thrown off a car or a fragment of a tank (follows the piece through the host's attachment) ----
 add({
   version: 1, name: 'take37.piece-trail', description: 'sparks and a thin smoke trail behind a flying part or fragment', seed: 3708, duration: 8, radius: 14,

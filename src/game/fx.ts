@@ -14,8 +14,10 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 /** the fuel in kilograms of petrol whose blast (2 per cent of its heat) is this much TNT, see fire.ts BLAST_YIELD: 43.7e6 * 0.02 / 4.184e6 J per kg */
 const PETROL_PER_TNT = 4.184e6 / (0.02 * 43.7e6);
 const POOL_FLUX = 2.4e6;
+/** the fuel dispensers burn this much harder than a plain pool of their fuel (art: the owner wants the fire strongest at the pumps) */
+const PUMP_GAIN = 1.8;
 
-interface Flame { handles: VfxHandle[]; main: VfxHandle | null; kind: string; heat: number; at: number; what: string }
+interface Flame { handles: VfxHandle[]; main: VfxHandle | null; kind: string; heat: number; at: number; what: string; gain?: number }
 
 export interface FxStats { fxMs: number; drawMs: number; particles: number; effects: number; level: string; skipped: number }
 
@@ -181,7 +183,7 @@ export class FxDirector {
     if (this.flames.has(e.id)) return;
     const car = this.carOf(take, e.id), at = e.at;
     const handles: VfxHandle[] = [];
-    let main: VfxHandle | null = null, kind = '', heat = Math.max(2e5, e.power);
+    let gain = 1; let main: VfxHandle | null = null, kind = '', heat = Math.max(2e5, e.power);
     const local: V3 | null = car ? (car.veh.toLocal(at) as V3) : null;
     const pos = (dy = 0) => (out: V3) => { if (car && local) { const w = car.veh.toWorld(local); out[0] = w[0]; out[1] = w[1] + dy; out[2] = w[2]; } else { out[0] = at[0]; out[1] = at[1] + dy; out[2] = at[2]; } return true; };
     const ground = Math.max(0.05, at[1] - 1);
@@ -196,18 +198,23 @@ export class FxDirector {
       const pool = this.spawn('fire.pool-petrol', [at[0], 0.04, at[2]], { heat: heat * 0.5, D });
       if (pool) handles.push(pool);
     } else if (e.what === 'pump') {
-      const P = clamp(heat, 2e6, 3e7); kind = 'fire.pool-petrol'; heat = P;
-      main = this.spawn('fire.pool-petrol', [at[0], ground, at[2]], { heat: P, D: clamp(2 * Math.sqrt(P / POOL_FLUX / Math.PI), 1.2, 4) });
+      // the fuel dispensers burn hardest: a bigger, hotter fire than the catalogue's pool of the same fuel, each one a little different (seeded by its id), with a second, smaller pool beside it and the torch of the leaking hose
+      let hs = 0; for (let k = 0; k < e.id.length; k++) hs = (hs * 31 + e.id.charCodeAt(k)) >>> 0;
+      const u = (n: number) => ((Math.imul(hs ^ (n * 0x9e3779b1), 0x85ebca6b) >>> 0) % 1000) / 1000;
+      gain = 0.8 + 0.6 * u(1); const P = clamp(heat, 2e6, 3e7) * PUMP_GAIN * gain; kind = 'take37.pump-fire'; heat = P;
+      const D = clamp(2 * Math.sqrt(P / POOL_FLUX / Math.PI), 1.6, 5.5) * (0.85 + 0.35 * u(2));
+      main = this.spawn('take37.pump-fire', [at[0], ground, at[2]], { heat: P, D }, {});
+      const side = this.spawn('take37.pump-fire', [at[0] + (u(3) - 0.5) * 1.6, ground, at[2] + (u(4) - 0.5) * 1.6], { heat: P * (0.35 + 0.3 * u(5)), D: D * (0.5 + 0.3 * u(6)) }); if (side) handles.push(side);
       const jet = this.spawn('fire.torch', [at[0], at[1] + 0.3, at[2]], { heat: 6e5, D: 0.3 }); if (jet) handles.push(jet);
     } else if (e.what === 'canopy') {
-      kind = 'fire.building'; heat = Math.max(8e6, e.power * 60);
-      main = this.spawn('fire.building', [at[0], at[1] + 0.3, at[2]], { heat, D: 5 });
+      kind = 'take37.canopy-fire'; heat = Math.max(8e6, e.power * 60);
+      main = this.spawn('take37.canopy-fire', [at[0], at[1] + 0.3, at[2]], { heat, D: 5 });
     } else if (e.what === 'propane') {
-      kind = 'fire.jet'; heat = 6e6;
-      main = this.spawn('fire.jet', [at[0], at[1], at[2]], { heat, length: 9 }, { direction: [0.35, 0.8, 0.2] });
+      kind = 'take37.jet-fire'; heat = 6e6;
+      main = this.spawn('take37.jet-fire', [at[0], at[1], at[2]], { heat, length: 9 }, { direction: [0.35, 0.8, 0.2] });
     } else { kind = 'fire.vehicle'; main = this.spawn('fire.vehicle', [at[0], at[1], at[2]], { heat }); }
     if (main) handles.unshift(main);
-    this.flames.set(e.id, { handles, main, kind, heat, at: e.t, what: e.what });
+    this.flames.set(e.id, { handles, main, kind, heat, at: e.t, what: e.what, gain });
     this.flash = Math.max(this.flash, e.what === 'tanker' ? 0.4 : 0.15);
     // the whoosh of fuel catching: a small flash and a roll of sparks
     this.cheap('take37.flash', [at[0], at[1], at[2]], { tnt: e.what === 'tanker' ? 3 : e.what === 'canopy' ? 1.2 : 0.4 }, 300);
@@ -216,7 +223,7 @@ export class FxDirector {
     const f = this.flames.get(e.id); if (!f?.main) return;
     // the fire grows over its first seconds (a car fire takes a while to take hold) and then follows the fuel's burning power
     const age = e.t - f.at, grow = f.what === 'canopy' ? clamp(0.25 + age / 12, 0.25, 1.4) : clamp(0.35 + age / 6, 0.35, 1), now = clamp(e.power * (f.what === 'tanker' || f.what === 'pump' ? 1 : 1) * grow, 2e5, f.kind === 'fire.pool-petrol' && f.what === 'tanker' ? 1.1e8 : 1e9);
-    const heat = f.what === 'canopy' ? Math.max(f.heat * 0.25, f.heat * grow) : f.what === 'car' ? clamp(now, 1e6, 6e6) : now;
+    const heat = f.what === 'pump' ? now * PUMP_GAIN * (f.gain ?? 1) : f.what === 'canopy' ? Math.max(f.heat * 0.25, f.heat * grow) : f.what === 'car' ? clamp(now, 1e6, 6e6) : now;
     if (Math.abs(heat - f.heat) / f.heat > 0.12) { this.vfx.setParam(f.main, 'heat', heat); f.heat = heat; }
   }
   private out(id: string, what: string, take: Take) {

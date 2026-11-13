@@ -220,6 +220,7 @@ export class GameView {
 
   /** a new take: the old cars and effects go, the new sim's cars appear */
   startTake(take: Take) {
+    if (this.sootMeshes) { for (const e of this.sootMeshes) { (e.mat instanceof BABYLON.PBRMaterial ? e.mat.albedoColor : e.mat.diffuseColor).copyFrom(e.base); e.k = 1; } this.sootMeshes = null; this.sootAt = -1; }
     for (const v of this.cars.values()) { v.entity?.destroy(); v.root.dispose(); }
     this.cars.clear(); this.hitSides.clear();
     for (const d of this.debris.values()) d.dispose();
@@ -262,6 +263,7 @@ export class GameView {
     this.shardFrame(sim.ds, dt);
     this.propsFrame(take);
     this.fx.frame(take, dt, [cam.x, cam.y, cam.z]);
+    this.sootFrame(take);
     if (this.warm) this.warmFrame();
     // camera
     this.placeCamera(take, dt, head);
@@ -273,6 +275,41 @@ export class GameView {
       const f = this.fx.flashLevel(dt), L = this.skyLight;
       if (f > 0.002) { if (!this.flashing) { this.flashing = true; this.skyBase = L.intensity; this.skyColor.copyFrom(L.diffuse); } L.intensity = this.skyBase * (1 + f * 0.35); BABYLON.Color3.LerpToRef(this.skyColor, new BABYLON.Color3(1, 0.62, 0.34), Math.min(0.5, f * 0.8), L.diffuse); }
       else if (this.flashing) { this.flashing = false; L.intensity = this.skyBase; L.diffuse.copyFrom(this.skyColor); }
+    }
+  }
+  // ---- soot on the station ----
+  /** Surfaces near a burning thing blacken, darker toward the source and growing with the time it has burned. The ground's soot is the effects' own soot decals (laid in growing layers by the fire's definition); this is the rest of the
+   *  station: every mesh near a fire gets a material of its own once (a clone of the same shader, so no recompile) and its albedo is scaled a few times a second by the fire's reach on it, never lighter than it was. */
+  private sootMeshes: { mesh: BABYLON.AbstractMesh; mat: BABYLON.PBRMaterial | BABYLON.StandardMaterial; base: BABYLON.Color3; k: number; c: BABYLON.Vector3 }[] | null = null;
+  private sootAt = -1;
+  private sootFrame(take: Take) {
+    const sim = take.scene.sim, t = sim.t;
+    if (t - this.sootAt < 0.25 && t >= this.sootAt) return;
+    this.sootAt = t;
+    const src: { p: V3; level: number; r: number }[] = [];
+    for (const s of take.scene.fire.stores) if (s.burning && !s.out) { const a = s.at(); src.push({ p: a, level: Math.min(1, (t - s.ignitedAt) / 18) * Math.min(1, 0.35 + s.power / 4e6), r: s.what === 'canopy' ? 14 : 8 }); }
+    if (!src.length) return;
+    if (!this.sootMeshes) {
+      // once, at the first fire: the meshes of the station and of the broken roof within 45 m of it
+      const seen = new Set<number>(), list: BABYLON.AbstractMesh[] = [];
+      for (const n of this.stationNodes.values()) { const ms = (n as unknown as BABYLON.AbstractMesh).getTotalVertices ? [n as unknown as BABYLON.AbstractMesh] : []; for (const m of ms) if (!seen.has(m.uniqueId)) { seen.add(m.uniqueId); list.push(m); } }
+      if (this.roof) for (const ms of this.roof.parts) for (const m of ms) list.push(m);
+      this.sootMeshes = [];
+      for (const m of list) {
+        const mat = m.material; if (!mat || !(mat instanceof BABYLON.PBRMaterial || mat instanceof BABYLON.StandardMaterial) || /glass|fluor|lamp/i.test(mat.name)) continue;
+        m.computeWorldMatrix(true); const c = m.getBoundingInfo().boundingBox.centerWorld;
+        if (!src.some((s) => Math.hypot(c.x - s.p[0], c.z - s.p[2]) < 45)) continue;
+        const own = mat.clone(mat.name + '#soot') as BABYLON.PBRMaterial | BABYLON.StandardMaterial; m.material = own;
+        const base = (own instanceof BABYLON.PBRMaterial ? own.albedoColor : own.diffuseColor).clone();
+        this.sootMeshes.push({ mesh: m, mat: own, base, k: 1, c: c.clone() });
+      }
+    }
+    for (const e of this.sootMeshes) {
+      // the broken roof's panels move: their reach follows them
+      const c = e.mesh.name.startsWith('roof') ? e.mesh.getBoundingInfo().boundingBox.centerWorld : e.c;
+      let w = 0; for (const s of src) { const d = Math.hypot(c.x - s.p[0], (c.y - s.p[1]) * 0.6, c.z - s.p[2]) / s.r; w += s.level * Math.exp(-d * d); }
+      const k = 1 - 0.85 * Math.min(1, w), cur = e.k;
+      if (k < cur - 0.004) { e.k = k; const col = e.mat instanceof BABYLON.PBRMaterial ? e.mat.albedoColor : e.mat.diffuseColor; col.copyFrom(e.base).scaleInPlace(k); }
     }
   }
   // ---- first-use shaders, compiled behind the splash ----
