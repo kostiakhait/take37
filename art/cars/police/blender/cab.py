@@ -52,6 +52,7 @@ def build_cab(B, root):
     build_dash(B, CK, Mesh, root)
     build_wheel(B, CK, Mesh, root)
     build_equipment(B, CK, Mesh, root)
+    tighten_a_pillar_gap(B)
     build_pillars(B, Mesh, root)
     build_door_cards(B, Mesh, root)
     build_mirrors(B, Mesh, root)
@@ -150,6 +151,55 @@ def fix_doors(B):
         bm.to_mesh(go.data)
         bm.free()
         B.log('glass', gname, sg, 'corner wedge faces removed:', len(bad))
+    # the front window post of each door (its sash beyond the glass): seen through the glass from the seat it showed as an ivory shard (paint) and, black, as dark daggers; the
+    # player's police car is drawn only from the seat, so the sash faces above the belt line between the windscreen and the glass's rear third are removed: the window is a clean opening
+    for nm, sg in (('Door_FL_shell', 1), ('Door_FR_shell', -1)):
+        do = bpy.data.objects.get(nm)
+        if do is None:
+            continue
+        bm = bmesh.new()
+        bm.from_mesh(do.data)
+        mw = do.matrix_world
+        bad = [f for f in bm.faces if 0.25 < (mw @ f.calc_center_median()).x < 1.0 and 0.45 < sg * (mw @ f.calc_center_median()).y < 1.05 and (mw @ f.calc_center_median()).z > 1.0]
+        bmesh.ops.delete(bm, geom=bad, context='FACES')
+        bm.to_mesh(do.data)
+        bm.free()
+        B.log('door', nm, 'front window sash faces removed:', len(bad))
+    # the body's own seal faces at the foot and head of the A-pillar (a dark fin at the dash end and a notch under the roof rail, seen through the glass from the seat)
+    bo = bpy.data.objects.get('Body')
+    if bo is not None and 'M_seal' in [m.name if m else '' for m in bo.data.materials]:
+        names = [m.name if m else '' for m in bo.data.materials]
+        si = names.index('M_seal')
+        bm = bmesh.new()
+        bm.from_mesh(bo.data)
+        mw = bo.matrix_world
+        bad = []
+        for f in bm.faces:
+            if f.material_index != si:
+                continue
+            c = mw @ f.calc_center_median()
+            if 0.25 < c.x < 1.0 and 0.40 < abs(c.y) < 1.0 and 0.88 < c.z < 1.42:
+                bad.append(f)
+        bmesh.ops.delete(bm, geom=bad, context='FACES')
+        bm.to_mesh(bo.data)
+        bm.free()
+        B.log('body', 'A-pillar foot/head seal faces removed:', len(bad))
+    # the seal and chrome strips along the A-pillar edges of the windscreen and of the door glass: after the glass edges are drawn together they poke out of the pillar as broken dashes and
+    # shards (rays from the eye hit M_chrome / M_seal of Glass and Glass_FL at 0.5 m); the whole run beside the pillar is removed, the pillar cover carries the edge
+    for gname, sg in (('Glass_FL', 1), ('Glass_FR', -1), ('Glass', 1), ('Glass', -1)):
+        go = bpy.data.objects.get(gname)
+        if go is None:
+            continue
+        bm = bmesh.new()
+        bm.from_mesh(go.data)
+        mw = go.matrix_world
+        mts = go.data.materials
+        bad = [f for f in bm.faces if mts[f.material_index] is not None and mts[f.material_index].name in ('M_seal', 'M_chrome')
+               and all(0.25 < (mw @ v.co).x < 0.92 and 0.42 < sg * (mw @ v.co).y < 0.95 and 0.90 < (mw @ v.co).z < 1.40 for v in f.verts)]
+        bmesh.ops.delete(bm, geom=bad, context='FACES')
+        bm.to_mesh(go.data)
+        bm.free()
+        B.log('glass', gname, sg, 'pillar-side seal/chrome faces removed:', len(bad))
     # the library's A-pillar spotlights (a black ball on a handle reaching into the cab, in the shared Trim object) are taken off: they read as a ball on a stick inside the cab
     tr = bpy.data.objects.get('Trim')
     if tr is not None:
@@ -200,7 +250,7 @@ def build_interior(B, CK, Mesh, root):
         m.cyl(V3((0.71, y, 0.46)), V3((0.78, y, 0.64)), 0.009, 'black', seg=6)
     # the sun visors (black), their pivots
     for s in (1, -1):
-        m.rbox(V3((0.10, s * 0.42, 1.315)), (0.16, 0.40, 0.022), 0.008, 'interior', axes(-25))
+        m.rbox(V3((0.12, s * 0.40, 1.343)), (0.11, 0.19, 0.011), 0.006, 'interior', axes(-3))     # stowed flat on the headliner (it was 32 x 80 cm and 4 cm thick, tipped 25 degrees: a beam)
         m.cyl(V3((0.22, s * 0.22, 1.35)), V3((0.22, s * 0.22, 1.37)), 0.006, 'brightwork', seg=8)
     # the dome lamp
     m.rbox(V3((-0.55, 0, 1.357)), (0.12, 0.17, 0.014), 0.006, 'interior')
@@ -538,6 +588,72 @@ def _edge(obs, sel, key, zs, dz=0.02):
     return out
 
 
+# the A-pillar the driver sees: the library car leaves 15-19 cm between the windscreen's side edge and the door glass's front edge (the owner: three times too thick). The glass edges are drawn
+# toward each other (windscreen outward, door glass forward) until the gap is the width of a real pillar trim, 7.5 cm at the dash falling to 6 cm at the roof; the glass runs on into the body of the
+# pillar, where the paint hides it from outside. Seals and chrome on the edges move with the glass.
+GAP_LOW, GAP_HIGH = 0.055, 0.045
+
+
+def tighten_a_pillar_gap(B):
+    import bpy
+    G = B.G
+    glass = bpy.data.objects.get('Glass')
+    for s in (1, -1):
+        k = 'L' if s > 0 else 'R'
+        fg = bpy.data.objects.get('Glass_F' + k)
+        if not (glass and fg):
+            continue
+        side = lambda v, s=s: v.y * s > 0.2  # noqa: E731
+        zs = [G.Z_BELT + 0.02 + (G.GH_Z_ROOF_EDGE - G.Z_BELT - 0.03) * i / 14 for i in range(15)]
+        ws = _edge([glass], lambda v: v.x > 0.0 and side(v), lambda v: v.y * s, zs)
+        fr = _edge([fg], side, lambda v: v.x, zs)
+        rows = [(0.5 * (a.z + b.z), a, b) for a, b in zip(ws, fr) if a is not None and b is not None and (b - a).length > 0.05]
+        if len(rows) < 4:
+            continue
+        zz = [r[0] for r in rows]
+        pa = [np.polyfit(zz, [r[1][i] for r in rows], 1) for i in range(3)]       # the windscreen's edge point as a line in z
+        pb = [np.polyfit(zz, [r[2][i] for r in rows], 1) for i in range(3)]
+        zlo, zhi = 0.93, 1.335
+
+        def move(z):
+            a = V3([float(np.polyval(pa[i], z)) for i in range(3)])
+            b = V3([float(np.polyval(pb[i], z)) for i in range(3)])
+            c = b - a
+            gap = c.length
+            t = min(1.0, max(0.0, (z - zlo) / (zhi - zlo)))
+            r = max(0.0, gap - (GAP_LOW + (GAP_HIGH - GAP_LOW) * t))
+            c = c.normalized()
+            return a, b, c * (0.45 * r), c * (-0.55 * r)          # where the edges are now, the windscreen's shift, the door glass's shift
+
+        def apply(ob, which):
+            mw = ob.matrix_world
+            inv = mw.inverted()
+            me = ob.data
+            n = 0
+            for v in me.vertices:
+                w = mw @ v.co
+                if not (zlo - 0.05 < w.z < zhi + 0.06):
+                    continue
+                a, b, dws, dfr = move(min(zhi, max(zlo, w.z)))
+                if which == 'ws':
+                    if not (w.x > 0.0 and w.y * s > 0.2):
+                        continue
+                    wgt = min(1.0, max(0.0, (w.y * s - (a.y * s - 0.12)) / 0.12))
+                    d = dws
+                else:
+                    wgt = min(1.0, max(0.0, (w.x - (b.x - 0.12)) / 0.12))
+                    d = dfr
+                if wgt <= 0:
+                    continue
+                v.co = inv @ (w + d * wgt)
+                n += 1
+            me.update()
+            return n
+        n1, n2 = apply(glass, 'ws'), apply(fg, 'fr')
+        B.log('pillar', k, 'glass edges drawn together: windscreen vertices', n1, 'door glass vertices', n2)
+
+
+
 def build_pillars(B, Mesh, root):
     """Moulded trim covers on the A, B and C pillars, between the glass edges (the pillars of the photographs are covered in the interior's colour), with a soft crown toward the cabin."""
     import bpy
@@ -560,7 +676,7 @@ def build_pillars(B, Mesh, root):
         # the A pillar: ONE closed solid (its own object, no open edges), swept from the roof rail down to the dash. Its centre line and width are fitted over the rows where the windscreen's
         # edge and the door glass's edge are clearly apart; it covers the whole gap between them (plus 2 cm each side) and sinks 3 cm into the body behind, so no glass seal, shell edge or
         # gap shows round it; the cabin side is a smooth crown.
-        good = [(pa, pb) for pa, pb in zip(ws, fr) if pa is not None and pb is not None and (pb - pa).length > 0.05]
+        good = [(pa, pb) for pa, pb in zip(ws, fr) if pa is not None and pb is not None and (pb - pa).length > 0.02]
         zz = [0.5 * (pa.z + pb.z) for pa, pb in good]
         pcx, pcy = np.polyfit(zz, [0.5 * (pa.x + pb.x) for pa, pb in good], 1), np.polyfit(zz, [0.5 * (pa.y + pb.y) for pa, pb in good], 1)
         pw = np.polyfit(zz, [(pb - pa).length for pa, pb in good], 1)
@@ -571,7 +687,7 @@ def build_pillars(B, Mesh, root):
             z = zlo + (zhi - zlo) * iz / NZ
             c = V3((float(np.polyval(pcx, z)), float(np.polyval(pcy, z)), z))
             tz = V3((float(pcx[0]), float(pcy[0]), 1.0)).normalized()
-            wid = max(0.09, float(np.polyval(pw, z)) + 0.04)
+            wid = 0.072 - 0.017 * (iz / NZ)      # a fixed pillar trim: 7.2 cm at the dash, 5.5 cm at the roof (the fitted gap is only the centre line now)
             across = V3((-0.45, s * 0.89, 0)).normalized()
             across = (across - tz * across.dot(tz)).normalized()
             dep = tz.cross(across)
