@@ -92,12 +92,12 @@ export class ShopSim {
         thing = `${d.building}:ShopDoor`; part = d.kind === 'ShopDoorLeaf' ? 'leaf' : 'glass';
         const mate = [...this.parts.values()].find((p) => p.thing === thing);
         if (!mate) { this.registerPart(d, thing, part, f); return; }          // the other half of the door comes next
-        // both halves known: the leaf (oak; stiles, rails and a panel make about half of its bounds) is the root, the glass a pane in it held by its putty
+        // both halves known: the leaf (oak, 45 mm: the mesh bounds are thicker only by the handle and the glass stop, so the bounds' depth is not the thickness; stiles, rails and a panel make about half of its area) is the root, the glass a pane in it held by its putty
         const lf = mate.part === 'leaf' ? mate.frame : f, gf = mate.part === 'leaf' ? f : mate.frame, rel = sub3(gf.at, lf.at);
         ds.defineThing({
           id: thing, root: 'leaf',
           parts: [
-            { id: 'leaf', substance: 'wood-oak', size: [lf.size[0], lf.size[1], Math.max(0.045, lf.size[2])], fill: 0.45, grain: [0, 1, 0], at: [0, 0, 0] },
+            { id: 'leaf', substance: 'wood-oak', size: [lf.size[0], lf.size[1], 0.045], fill: 0.45, grain: [0, 1, 0], at: [0, 0, 0] },
             { id: 'glass', substance: 'glass-tempered', glass: 'tempered', size: [gf.size[0], gf.size[1], 0.006], thickness: 0.006, at: [dot(rel, lf.u), dot(rel, lf.up), dot(rel, lf.out)] },
           ],
           links: [{ part: 'glass', to: 'leaf', kind: 'glue', tensile: 4e6, area: 0.004, count: 1 }],
@@ -167,8 +167,24 @@ export class ShopSim {
       if (o.def.kind === 'ShopAwning') { this.fall(o, dir, speed); this.gone(o, 'fell', o.frame.at, depth); } else this.gone(o, 'broken', pt, depth);
       if (cause) this.sim.markActive(s.thing, depth);
     }
+    this.settleDoor(s.thing, pt, depth, cause);
     if (s.state === 'whole' && s.def.kind === 'ShopAwning') this.counts.awningsHit++;
     return r;
+  }
+
+  /** a door whose leaf is broken has nothing to hold its pane: the pane falls out of the leaf and lands on the floor, with the energy of its fall (mass x g x the height of its centre) given to the module as a break of the pane. Whatever the module decides, the pane has left the leaf. */
+  private settleDoor(thing: string, pt: Vec3, depth: number, cause: string | null) {
+    let leaf: ShopState | undefined, glass: ShopState | undefined;
+    for (const o of this.parts.values()) if (o.thing === thing) { if (o.part === 'leaf') leaf = o; else if (o.part === 'glass') glass = o; }
+    if (!leaf || !glass || leaf.state === 'whole' || glass.state !== 'whole') return;
+    const ds = this.sim.ds, d = ds.thing(thing), ap = d.assembly.get('glass');
+    if (!ap.part.broken && ap.attached) {
+      const at = glass.frame.at, E = ap.part.mass * 9.81 * Math.max(0.3, at[1]);
+      ds.breakAt(thing, { part: 'glass', point: [...at] as Vec3, normal: [0, 1, 0], energy: E, step: this.sim.tick });
+      if (!ap.part.broken && ap.attached) d.assembly.release('glass', [...at] as Vec3, this.sim.tick);
+    }
+    this.gone(glass, 'broken', pt, depth);
+    if (cause) this.sim.markActive(thing, depth);
   }
 
   /** the section of awning that came off its bolts falls as a body (the sim's debris; the view carries the mesh) */
@@ -237,7 +253,11 @@ export class ShopSim {
 const sub3 = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 
 /** the buildings of the street that have their shop front converted: the node of the street glb, and the file with the shell and the parts */
-export const SHOP_BUILDINGS: { bld: string; url: string }[] = [{ bld: 'Bld_R_107_18', url: '/art/street/shops/shop_18.glb' }];
+export const SHOP_BUILDINGS: { bld: string; url: string }[] = [
+  { bld: 'Bld_R_101_19', url: '/art/street/shops/shop_19.glb' }, { bld: 'Bld_R_102_21', url: '/art/street/shops/shop_21.glb' }, { bld: 'Bld_R_103_28', url: '/art/street/shops/shop_28.glb' },
+  { bld: 'Bld_R_104_08', url: '/art/street/shops/shop_08.glb' }, { bld: 'Bld_R_105_32', url: '/art/street/shops/shop_32.glb' }, { bld: 'Bld_R_106_25', url: '/art/street/shops/shop_25.glb' },
+  { bld: 'Bld_R_107_18', url: '/art/street/shops/shop_18.glb' },
+];
 
 /** the bounds of the shell and of every part of the converted buildings in the game's frame, read off the JSON of the street and of the shop files (no mesh is loaded) */
 export function parseShops(street: GLtf, files: { bld: string; json: GLtf }[]): ShopDefs {
