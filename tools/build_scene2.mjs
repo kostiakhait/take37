@@ -38,8 +38,8 @@ const CH = process.env.TAKE37_CHARS ?? 'D:/temp/take37/s2/chars';
 fs.mkdirSync(path.join(OUT, 'people'), { recursive: true });
 for (const who of ['arnold', 'emily']) {
   const src = path.join(CH, `${who}.skin.glb`), dst = path.join(OUT, 'people', `${who}.glb`);
-  if (!fs.existsSync(src)) { console.log('no skinned', who, 'yet'); continue; }
-  if (fs.existsSync(dst) && fs.statSync(dst).mtimeMs >= fs.statSync(src).mtimeMs) continue;
+  if (!fs.existsSync(src)) throw new Error(`no skinned character for ${who} (${src}): the build never makes a stand-in; build the character first`);
+  if (fs.existsSync(dst) && fs.statSync(dst).mtimeMs >= fs.statSync(src).mtimeMs) continue;   // (the page also refuses a file whose hair mesh is not this person's: prisoners.ts)
   const r = spawnSync('node', [path.join(here, 'optchar.mjs'), src, dst, '1024'], { stdio: 'inherit' });
   if (r.status !== 0) throw new Error('optchar failed for ' + who);
 }

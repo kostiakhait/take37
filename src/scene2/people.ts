@@ -91,12 +91,20 @@ export class People {
   private crew = new Map<string, { n: number; role: Role }>();
   /** men who went over the side and now swim for the shore */
   overboard = 0;
+  /** the hulls afloat: each craft's footprint in its own frame (from its model's boxes), its node and the world-to-node matrix of this frame */
+  private hulls: Array<{ node: BABYLON.TransformNode; lo: [number, number]; hi: [number, number]; inv: BABYLON.Matrix }> = [];
+  private inHull(x: number, z: number): boolean {
+    const v = new BABYLON.Vector3();
+    for (const h of this.hulls) { v.set(x, h.node.getAbsolutePosition().y, z); const p = BABYLON.Vector3.TransformCoordinates(v, h.inv); if (p.x > h.lo[0] && p.x < h.hi[0] && p.z > h.lo[1] && p.z < h.hi[1]) return true; }
+    return false;
+  }
   /** how long reading each deck off its model took, ms (for the load time) */
   readonly readMs: Record<string, number> = {};
 
   constructor(scene: BABYLON.Scene, private water: () => number) {
     // the ground: the sand and sea bed with the mole's deck on it; the walls: the barrack, the tower and the fence of the post (the posts are solid, the gate is open)
-    this.walkers = new Walkers([new FieldSupport('ground', (x, z) => walkHeight(x, z), (x, z) => solidAt(x, z))], { water: () => this.water() });
+    // the sea is level everywhere except inside a hull: a boat's cockpit floor may lie below the water outside (the model's lowest floor), but the water does not come in over the side
+    this.walkers = new Walkers([new FieldSupport('ground', (x, z) => walkHeight(x, z), (x, z) => solidAt(x, z))], { water: (x: number, z: number) => (this.inHull(x, z) ? null : this.water()) });
     this.decks = new Decks(scene, this.walkers);
     this.decks.onOverboard = s => this.adopt(s);
   }
@@ -126,6 +134,12 @@ export class People {
     const t0 = performance.now();
     this.decks.add(key, node, meshes, c.n, false, model, spacing);
     this.readMs[key] = Math.round(performance.now() - t0);
+    node.computeWorldMatrix(true);
+    const inv = node.getWorldMatrix().clone().invert(), lo: [number, number] = [Infinity, Infinity], hi: [number, number] = [-Infinity, -Infinity];
+    for (const m of meshes) { if (!m.getTotalVertices()) continue; m.computeWorldMatrix(true); for (const c of m.getBoundingInfo().boundingBox.vectorsWorld) { const p = BABYLON.Vector3.TransformCoordinates(c, inv); lo[0] = Math.min(lo[0], p.x); lo[1] = Math.min(lo[1], p.z); hi[0] = Math.max(hi[0], p.x); hi[1] = Math.max(hi[1], p.z); } }
+    // the hull proper: the middle of the footprint (the bow and stern rise and narrow; rigging and rails do not count)
+    const cx = (lo[0] + hi[0]) / 2, cz = (lo[1] + hi[1]) / 2, sx = (hi[0] - lo[0]) * 0.36, sz = (hi[1] - lo[1]) * 0.36;
+    this.hulls.push({ node, lo: [cx - sx, cz - sz], hi: [cx + sx, cz + sz], inv });
   }
   setCrew(plan: Record<string, { n: number; role: Role }>) { this.crew = new Map(Object.entries(plan)); }
 
@@ -143,6 +157,7 @@ export class People {
   update(dt: number, aboard: (key: string) => number = () => 0) {
     if (dt <= 0) return;
     this.dress();
+    for (const h of this.hulls) h.node.getWorldMatrix().invertToRef(h.inv);
     this.decks.update(dt, aboard);
     for (const b of this.brains) this.stepBrain(b, dt);
     this.list.length = 0;

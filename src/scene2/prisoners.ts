@@ -47,12 +47,17 @@ export interface PrisonerSpec {
   who: Who; file: string; profile: MicroProfile; seatHeight: number; sit: number; prop: string; propLo: number; propHi: number; place: [number, number]; face: number;
   /** a squat (the module's seat puts the feet forward, as on a chair): the feet's offset from the seat's target, m (x out, y up, z forward), and the trunk's lean forward, rad */
   feet?: [number, number, number]; lean?: number;
+  /** the name of the figure's hair mesh in its glb: the check that the file loaded is the person it is for (a stand-in file or a swapped cage must fail loudly, not show the wrong person) */
+  hair: string;
+  /** both hands closed round a bar: how far the hands are turned about the forearm (thumbs up for a vertical bar), rad, and how tightly the fingers close (0..1) */
+  grip?: { roll: number; curl: number };
 }
 
 export function emilyProfile(): MicroProfile {
   const p = profile('bystander'); p.name = 'emily-caged'; p.role = 'prisoner';
   // the bars of the cage in front of her, at her shoulder height, a little wider than her shoulders: both hands round them
-  p.props = { bars: { hand: 'both', socket: 'hand_l', rest: [[0.09, -0.1, 0.46], [0.09, -0.1, 0.46]], use: [[0.11, -0.07, 0.47], [0.11, -0.07, 0.47]] } };
+  // (the target is the wrist: the palm is a hand's length on, so the wrist stops short of the bar by that)
+  p.props = { bars: { hand: 'both', socket: 'hand_l', rest: [[0.09, -0.13, 0.385], [0.09, -0.13, 0.385]], use: [[0.09, -0.11, 0.39], [0.09, -0.11, 0.39]] } };
   p.repertoire = { 'look-around': 3, 'shift-weight': 2 };
   p.temperament = { energy: 0.3, nervousness: 0.75, expansiveness: 0.2, dominance: 0.1, focus: 0.3, mood: 0.1 };
   p.interests = { action: 2, player: 2, actor: 1 };
@@ -83,6 +88,9 @@ export class Prisoner {
   readonly P: PersonState;
   root: BABYLON.TransformNode;
   ready = false;
+  /** the glb this person was loaded from (checked against his hair mesh) */
+  file = '';
+  private handAxis: Partial<Record<'l' | 'r', BABYLON.Vector3>> = {};
   private rig: (RigLike & { rootFix: RootFix }) | null = null;
   private nodes: BABYLON.TransformNode[] = [];
   private pose: PoseLike | null = null;
@@ -94,10 +102,13 @@ export class Prisoner {
     this.P = newPerson(spec.who, spec.profile, spec.who === 'arnold' ? 3737 : 9191, { external: true });
     this.P.posture = spec.sit > 0.5 ? 'sit' : 'stand'; this.P.trans = null as never;
   }
-  async load(url: string) {
-    const slash = url.lastIndexOf('/');
+  /** the glb of this person, next to the page (made by build_scene2 from the skinned character; there is no stand-in) */
+  async load(dir = '/people/') {
+    const url = `${dir}${this.spec.file}.glb`, slash = url.lastIndexOf('/');
     const c = await BABYLON.SceneLoader.LoadAssetContainerAsync(url.slice(0, slash + 1), url.slice(slash + 1), this.scene);
     c.addAllToScene();
+    if (!c.meshes.some((m) => m.name === this.spec.hair)) throw new Error(`${url} is not ${this.spec.who}: no mesh "${this.spec.hair}" (has ${c.meshes.slice(0, 4).map((m) => m.name).join(', ')})`);
+    this.file = url;
     const top = c.meshes[0]!; top.parent = this.root;
     for (const m of c.meshes) { m.isPickable = false; m.alwaysSelectAsActiveMesh = true; }
     const sk = c.skeletons[0]; if (!sk) throw new Error('prisoner glb has no skeleton: ' + url);
@@ -108,6 +119,8 @@ export class Prisoner {
       return { name: n.name.slice(n.name.lastIndexOf('/') + 1), parent: p, q: [q.x, q.y, q.z, q.w], t: [n.position.x, n.position.y, n.position.z] };
     });
     this.nodes = nodes; this.rig = rigOf(joints);
+    // the hand's length axis in its own frame (towards its middle finger): a grip turns the hand about it
+    for (const side of ['l', 'r'] as const) { const m = nodes.find((n) => n.name.endsWith('middle_01_' + side)); if (m) this.handAxis[side] = m.position.clone().normalize(); }
     const pi = this.rig.index.get('pelvis')!;
     this.pose = { q: new Float32Array(this.rig.restQ), pelvis: [this.rig.tLocal[3 * pi]!, this.rig.tLocal[3 * pi + 1]!, this.rig.tLocal[3 * pi + 2]!] };
     // he stands on the platform: dropped a little above it, the physics lands him (the platform's top is a cell of the grid in the cage's frame)
@@ -131,6 +144,8 @@ export class Prisoner {
     const f = frameOf(out, sp.profile, { lod: 'near', time: this.P.t, seed: this.P.seed, seatHeight: sp.seatHeight });
     if (sp.feet) { f.feet.l = [...sp.feet]; f.feet.r = [...sp.feet]; }
     if (sp.lean) for (const b of ['spine_01', 'spine_02', 'spine_03']) f.rot.push({ bone: b, axis: 0, rad: sp.lean });
+    // a grip: the fingers closed on the bar, a little tighter when she tightens her hands (the module's finger curl is the loose hand of a person at rest)
+    if (sp.grip) { const tight = sp.grip.curl * (0.9 + 0.1 * (out.props[sp.prop] ?? 0)); for (let i = 0; i < 8; i++) f.curl[i] = Math.min(1, tight * (1 - 0.04 * (i % 4))); }
     poseFrame(this.rig, this.pose, f);
     // back to the nodes: the root keeps its own rest turn, its children take theirs back from the y-up frame the pose layer worked in
     const q = this.pose.q, R = this.rig.rootFix, Ri = conj(R);
@@ -138,6 +153,10 @@ export class Prisoner {
       const n = this.nodes[i]!; let x = q[4 * i]!, y = q[4 * i + 1]!, z = q[4 * i + 2]!, w = q[4 * i + 3]!;
       if (this.rig.parent[i] === 0) { const r = qmul(Ri, [x, y, z, w]); x = r[0]; y = r[1]; z = r[2]; w = r[3]; }
       (n.rotationQuaternion ??= new BABYLON.Quaternion()).set(x, y, z, w);
+    }
+    if (sp.grip) for (const side of ['l', 'r'] as const) {
+      const hand = this.nodes[this.rig.index.get('hand_' + side)!]!, ax = this.handAxis[side]; if (!hand || !ax) continue;
+      hand.rotationQuaternion = hand.rotationQuaternion!.multiply(BABYLON.Quaternion.RotationAxis(ax, (side === 'l' ? 1 : -1) * sp.grip.roll));
     }
     const pp = qrot(Ri, this.pose.pelvis); this.nodes[pi]!.position.set(pp[0], pp[1], pp[2]);
   }
@@ -154,7 +173,7 @@ export function makePrisoners(scene: BABYLON.Scene, cages: { middle: BABYLON.Tra
   };
   const gA = mk(cages.middle, 'cage-middle'), gE = mk(cages.end, 'cage-end');
   const walkers = new Walkers([gA, gE], { water });
-  const arnold = new Prisoner({ who: 'arnold', file: 'arnold', profile: arnoldProfile(), seatHeight: 0.2, sit: 1, prop: 'knees', propLo: 0, propHi: 1, place: [0.1, -0.15], face: Math.PI + 0.35, feet: [0.04, 0, -0.34], lean: 0.2 }, cages.middle, walkers, gA, scene);
-  const emily = new Prisoner({ who: 'emily', file: 'emily', profile: emilyProfile(), seatHeight: 0.47, sit: 0, prop: 'bars', propLo: 0, propHi: 1, place: [0.0, -0.64], face: Math.PI }, cages.end, walkers, gE, scene);
+  const arnold = new Prisoner({ who: 'arnold', file: 'arnold', profile: arnoldProfile(), seatHeight: 0.2, sit: 1, prop: 'knees', propLo: 0, propHi: 1, place: [0.1, -0.15], face: Math.PI + 0.35, hair: 'Hair_S_SlickBack', feet: [0.04, 0, -0.34], lean: 0.2 }, cages.middle, walkers, gA, scene);
+  const emily = new Prisoner({ who: 'emily', file: 'emily', profile: emilyProfile(), seatHeight: 0.47, sit: 0, prop: 'bars', propLo: 0, propHi: 1, place: [0.0, -0.64], face: Math.PI, hair: 'Hair_L_Straight', grip: { roll: 1.4, curl: 0.95 } }, cages.end, walkers, gE, scene);
   return { arnold, emily, walkers };
 }

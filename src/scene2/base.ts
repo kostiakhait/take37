@@ -3,7 +3,7 @@
  * The villain's post on the shore of scene 2 (made for the game, procedural, in khaki and grey, no signs or emblems): a barrack, a watch tower with a searchlight and a
  * fence with a gate that opens on the road to the mole. It stands on the levelled pad of `shore.ts` (BASE). Also the dirt road from the gate to the mole's landward end.
  */
-import { BASE, MOLE, bed } from './shore';
+import { BASE, MOLE, bed, roadAt } from './shore';
 
 const KHAKI: [number, number, number] = [0.5, 0.45, 0.31], GREY: [number, number, number] = [0.42, 0.44, 0.45], DARK: [number, number, number] = [0.14, 0.14, 0.15], ROOF: [number, number, number] = [0.3, 0.34, 0.32], WOOD: [number, number, number] = [0.33, 0.26, 0.18];
 /** the post: the fence's half extents about the pad's centre (x along the beach, z in and out), the gate's width and which side it is on (+x: the side of the mole) */
@@ -95,11 +95,8 @@ export function buildPost(scene: BABYLON.Scene): Post {
   return { root, gate: { x: cx + hx, z: cz }, searchlight: sl };
 }
 
-/** the road's centre line as a function of t (0 at the gate, 1 at the mole's landward end), world x and z */
-export function roadAt(from: { x: number; z: number }): (t: number) => [number, number] {
-  const to = { x: MOLE.x - 1.6, z: MOLE.rampFrom - 4 };
-  return (t) => { const bend = Math.sin(t * Math.PI) * 7; return [from.x + (to.x - from.x) * t - bend * 0.6, from.z + (to.z - from.z) * t + bend]; };
-}
+/** the road's centre line (shore.ts: the ground's foredune keeps off it) */
+export { roadAt };
 /** the dirt road from the gate to the mole's landward end: a ribbon on the ground, ruts darker, the edges fade into the sand */
 export function buildRoad(scene: BABYLON.Scene, from: { x: number; z: number }): BABYLON.Mesh {
   const pts: Array<[number, number]> = [];

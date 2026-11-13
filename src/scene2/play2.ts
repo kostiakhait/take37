@@ -16,6 +16,7 @@ import { FleetView2, layoutFleet } from './fleet2';
 import { CAGE, buildCage, cageMaterials } from './cage';
 import { buildPost, buildRoad } from './base';
 import { Grove, layoutGrove } from './grove';
+import { BeachKit } from './beachkit';
 import { FarCrowd } from '@dunkirk/far-crowd';
 import { NearCrowd } from './near2';
 import { People, crewPlan, layoutAshore, layoutAssault } from './people';
@@ -101,6 +102,9 @@ async function main() {
   const road = buildRoad(scene, { x: post.gate.x + 1.5, z: post.gate.z });
   const grove = new Grove(scene, lib, layoutGrove());
   const groveBuilt = grove.build();
+  // the beach's driftwood, wire, stores, tracks, abandoned lorry (beachkit.ts)
+  const kit = new BeachKit(scene, lib, game.world, lite);
+  const kitBuilt = kit.build();
   // ---- the people (stage 4): ~50 on the engine's Walkers; the rings of figures: full near the camera, the library's reduced ones next, baked pictures of the perspective ladder far ----
   splash.set(0.5, 'The people');
   const people = new People(scene, () => seaModel.level);
@@ -118,7 +122,7 @@ async function main() {
   const crowdBuilt = Promise.all([midBuilt, farBuilt]);
   // the prisoners (Arnold on his heels in the middle cage, Emily at the bars of the end cage)
   const prisoners = makePrisoners(scene, { middle: cages[0], end: cages[1] }, () => seaModel.level);
-  const prisonersBuilt = Promise.all([prisoners.arnold.load('/people/arnold.glb'), prisoners.emily.load('/people/emily.glb')]);
+  const prisonersBuilt = Promise.all([prisoners.arnold.load(), prisoners.emily.load()]);
   const fleetBuilt = fleet.build((q.get('steamer') as 'end' | 'middle' | 'idle' | null) ?? 'end');
 
   // the observer camera of the stage (drag to look, W A S D, Q / E, Shift); the player's own controls are not part of the field
@@ -145,7 +149,7 @@ async function main() {
     cam.position.copyFromFloats(fly.p[0], fly.p[1], fly.p[2]);
     cam.setTarget(new BABYLON.Vector3(fly.p[0] + sy * cp, fly.p[1] + spf, fly.p[2] + cy * cp)); cam.fov = fly.fov;
     const c = cam.globalPosition;
-    dunes.update(c);
+    dunes.update(c); kit.update(c);
     skyDome.update(clock); sea.update(clock, level, c); beach.update(c, Math.min(2600, weather.visibility * 2.6 + 400)); beach.tick(c, level, clock);
     fleet.update(clock, paused ? 0 : dt);
     {
@@ -186,13 +190,16 @@ async function main() {
     (globalThis as unknown as { __capture: Blob }).__capture = cap.blob!;
     return { frames: cap.frames, fps: cap.fps, width: cap.width, height: cap.height, mime: cap.mime, bytes: cap.blob!.size, durationMs: cap.durationMs };
   };
-  (globalThis as unknown as { __scene2: unknown }).__scene2 = { record, overLog, scene, engine, cam, fleet, fleetBuilt, people, prisoners, near, mid, far, crowdBuilt, prisonersBuilt, cages, post, road, grove, groveBuilt, CAGE, beach, sea, mole, dunes, fly, MOLE, bed, tide,
+  (globalThis as unknown as { __scene2: unknown }).__scene2 = { record, overLog, kit, kitBuilt, scene, engine, cam, fleet, fleetBuilt, people, prisoners, near, mid, far, crowdBuilt, prisonersBuilt, cages, post, road, grove, groveBuilt, CAGE, beach, sea, mole, dunes, fly, MOLE, bed, tide,
+    /** who stands in which cage, read off the scene (the shot tools write it into their report and fail when it is wrong) */
+    identity: () => ({ arnold: { cage: cages.indexOf(prisoners.arnold.root.parent as BABYLON.TransformNode) === 0 ? 'middle' : 'end', file: prisoners.arnold.file }, emily: { cage: cages.indexOf(prisoners.emily.root.parent as BABYLON.TransformNode) === 1 ? 'end' : 'middle', file: prisoners.emily.file } }),
+    seaLevel: () => seaModel.level, seaModel,
     setTime: (t: number) => { clock = t; }, pause: (p: boolean) => { paused = p; },
     free: (p: V3, t: V3, fov = 0.95) => { fly.p = [p[0], p[1], p[2]]; const d = [t[0] - p[0], t[1] - p[1], t[2] - p[2]]; fly.yaw = Math.atan2(d[0], d[2]); fly.pitch = Math.atan2(d[1], Math.hypot(d[0], d[2])); fly.fov = fov; },
     renderer: () => { try { const gl = (engine as unknown as { _gl: WebGLRenderingContext })._gl; const x = gl.getExtension('WEBGL_debug_renderer_info'); return x ? String(gl.getParameter(x.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER)); } catch { return '?'; } } };
   Object.assign(globalThis, { ferretGame: game, ferretReady: true });
   splash.set(1, 'Ready');
-  const warm = () => { if ((beach.settled && fleet.views.every(v => v.ready) && grove.meshes.length > 0 && people.decks.waiting === 0 && mid.ready > 0 && far.ready > 0 && prisoners.arnold.ready && prisoners.emily.ready) || performance.now() > 60000) splash.hide(); else requestAnimationFrame(warm); };
+  const warm = () => { if ((beach.settled && fleet.views.every(v => v.ready) && grove.meshes.length > 0 && kit.ready && people.decks.waiting === 0 && mid.ready > 0 && far.ready > 0 && prisoners.arnold.ready && prisoners.emily.ready) || performance.now() > 60000) splash.hide(); else requestAnimationFrame(warm); };
   warm();
 }
 main().catch(e => { console.error(e); (globalThis as unknown as { ferretError: string }).ferretError = String(e?.message ?? e); const t = document.getElementById('splashtxt'); if (t) t.textContent = 'Error: ' + (e?.message ?? e); });

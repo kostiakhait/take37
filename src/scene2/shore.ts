@@ -50,9 +50,36 @@ export function bed(x: number, z: number): number {
     const ramp = smoothstep(-170, -270, u), swell = 0.5 + 0.5 * Math.sin(x * 0.006 + u * 0.004);
     h = p + ramp * (2.0 + 9.0 * fbm(x * 0.012, z * 0.012) * (0.6 + 0.4 * swell));
   }
+  // the foredune: low hummocks of sand held by marram between the beach and the dunes proper, kept off the road and the mole's landward end
+  if (u < -118 && u > -190) h += foredune(x, z, u);
   // the villain's post stands on a levelled pad in the dunes
   const w = 1 - smoothstep(BASE.r, BASE.r + 24, Math.hypot(x - BASE.x, z - BASE.z));
   return w > 0 ? h + (BASE.h - h) * w : h;
+}
+/** the foredune's hummocks at (x, z) (u: the shore-normal coordinate): patches of up to 1.4 m, none on the road or near the mole's landward end */
+export function foredune(x: number, z: number, u: number): number {
+  const edge = smoothstep(-118, -140, u) * (1 - smoothstep(-175, -190, u));
+  if (edge <= 0) return 0;
+  const m = smoothstep(0.3, 0.6, fbm(x * 0.05 + 7.3, z * 0.065 + 2.9)), ridge = 0.35 + 0.65 * noise2(x * 0.15, z * 0.15);
+  return 1.4 * edge * m * ridge * smoothstep(7, 14, roadDist(x, z)) * smoothstep(14, 26, Math.abs(x - MOLE.x));
+}
+/** the dirt road's centre line as a function of t (0 at the gate, 1 at the mole's landward end), world x and z */
+export function roadAt(from: { x: number; z: number }): (t: number) => [number, number] {
+  const to = { x: MOLE.x - 1.6, z: MOLE.rampFrom - 4 };
+  return (t) => { const bend = Math.sin(t * Math.PI) * 7; return [from.x + (to.x - from.x) * t - bend * 0.6, from.z + (to.z - from.z) * t + bend]; };
+}
+/** where the road starts: the gate of the post (the fence's half width 22 m, see base.ts POST, and 1.5 m) */
+export const roadFrom = () => ({ x: BASE.x + 22 + 1.5, z: BASE.z });
+let ROAD_PTS: Array<[number, number]> | null = null;
+/** the distance from (x, z) to the road's centre line, m */
+export function roadDist(x: number, z: number): number {
+  if (!ROAD_PTS) { const f = roadAt(roadFrom()); ROAD_PTS = []; for (let i = 0; i <= 30; i++) ROAD_PTS.push(f(i / 30)); }
+  let best = Infinity;
+  for (let i = 0; i + 1 < ROAD_PTS.length; i++) {
+    const [ax, az] = ROAD_PTS[i]!, [bx, bz] = ROAD_PTS[i + 1]!, dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz, t = l2 > 0 ? Math.min(1, Math.max(0, ((x - ax) * dx + (z - az) * dz) / l2)) : 0;
+    best = Math.min(best, Math.hypot(x - (ax + dx * t), z - (az + dz * t)));
+  }
+  return best;
 }
 /** the base's pad: its centre on the sand above the high-water line (m), the flat radius and the pad's height above the mean sea level */
 export const BASE = { x: -80, z: -200, r: 30, h: 3.4 };
