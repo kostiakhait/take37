@@ -50,7 +50,7 @@ def build_cabin(root, M, N=None):
         left = ph < 180
         a = ph if left else 360 - ph       # fold: 0 top, 180 belly
         # windshield: from the nose to the door front, |phi| < 78 deg, centre cell (j = N-1 / 0) is the centre post
-        if s < S_WS1 and a < 78 and s > 0.06:
+        if s < S_WS1 and a < 98 and s > 0.06:
             if j == N - 1 or j == 0 and False:
                 return ('skin', 0)
             return ('wind', 0)
@@ -136,6 +136,25 @@ def door_split(root, objs, Pt, M):
     return out
 
 
+def build_frames(root, M):
+    """thin paint frames round the glass: the windscreen header bow and A-pillars (s = S_WS1), the windscreen's lower edge, and the window rings of both doors"""
+    bm = bmesh.new()
+
+    def tube(sp):
+        pts = [cabin_point(s_, ph) for s_, ph in sp]
+        kit.bm_tube(bm, kit.smooth_poly([tuple(p) for p in pts], 2), 0.011, n=8, mat_idx=0)
+    for sgn in (1, -1):
+        d = lambda a: math.radians(a) * sgn if sgn > 0 else -math.radians(a)   # noqa: E731
+        tube([(S_WS1 + 0.005, d(a)) for a in range(0, 100, 7)] + [(S_WS1 + 0.005, d(98))])          # A-pillar
+        tube([(s_, d(98)) for s_ in np.linspace(0.10, S_WS1, 12)])                                    # windscreen lower edge
+        a0, a1 = 33, 85
+        w0, w1 = S_WIN0, S_WIN1
+        ring = [(w0, d(a)) for a in range(a0, a1 + 1, 6)] + [(s_, d(a1)) for s_ in np.linspace(w0, w1, 8)][1:] + [(w1, d(a)) for a in range(a1, a0 - 1, -6)][1:] + [(s_, d(a0)) for s_ in np.linspace(w1, w0, 8)][1:]
+        kit.bm_tube(bm, kit.smooth_poly([tuple(cabin_point(s_, ph)) for s_, ph in ring], 1), 0.009, n=8, mat_idx=0)
+    tube([(s_, 0.0) for s_ in np.linspace(0.07, S_WS1, 10)])         # centre post
+    return kit.from_bm('Cabin_Frames', bm, [M['paint']], root)
+
+
 def build_pylon(root, M):
     """mast fairing ('pylon'): front edge nearly vertical, the rear edge raked; rounded rectangle sections lofted up the mast"""
     zs = [1.46, 1.70, 1.95, 2.20, 2.40, 2.44, 2.455]
@@ -160,7 +179,10 @@ def build_pylon(root, M):
         for f in row:
             f.smooth = True
     kit.bm_solidify(bm, 0.003, inner_mat=1)
-    ob = kit.from_bm('Pylon_Fairing', bm, [M['paint'], M['int_grey']], root)
+    for fc in bm.faces:
+        if fc.material_index == 0:
+            fc.material_index = 2
+    ob = kit.from_bm('Pylon_Fairing', bm, [M['paint'], M['int_grey'], M['accent']], root)
     # UV
     kit.planar_uv(ob, (0, 2), 0.5)
     return ob
@@ -172,8 +194,8 @@ def build_cowl(root, M):
     N = seg(32, 16)
     N -= N % 8
     Pt = np.zeros((len(xs), N, 3))
-    HW = [(0.8, 0.36), (1.0, 0.26), (1.36, 0.17)]
-    TP = [(0.8, 1.54), (1.0, 1.62), (1.36, 1.77)]
+    HW = [(0.8, 0.44), (1.0, 0.28), (1.36, 0.17)]
+    TP = [(0.8, 1.56), (1.0, 1.63), (1.36, 1.77)]
     BT = [(0.8, 1.22), (1.0, 1.30), (1.36, 1.43)]
     for k, x in enumerate(xs):
         w, t, b = crom(HW, x), crom(TP, x), crom(BT, x)

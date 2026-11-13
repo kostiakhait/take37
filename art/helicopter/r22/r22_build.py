@@ -55,6 +55,7 @@ def fuselage_build(ctx, fuselage):
     parts['wind'] = objs['wind']
     parts['bulkhead'] = objs['bulkhead']
     parts['doors'] = doors
+    parts['frames'] = fuselage.build_frames(root, M)
     parts['pylon'] = fuselage.build_pylon(root, M)
     cowl = fuselage.build_cowl(root, M)
     from r22 import mech

@@ -287,7 +287,10 @@ def console_texture(w=512, h=512):
 
 
 def reg_texture(text='F-GT37', w=1536, h=256, col=(0.05, 0.08, 0.2)):
-    m = text_mask(text, 200, gap=0.3)
+    m = text_mask(text, 226, gap=0.28)
+    for _ in range(2):      # bolder strokes: grow the mask by a pixel each way
+        p = np.pad(m, 1)
+        m = np.maximum.reduce([p[1:-1, 1:-1], p[:-2, 1:-1], p[2:, 1:-1], p[1:-1, :-2], p[1:-1, 2:]])
     img = np.zeros((h, w, 4), np.float32)
     img[..., :3] = col
     hh, ww = m.shape
@@ -295,7 +298,7 @@ def reg_texture(text='F-GT37', w=1536, h=256, col=(0.05, 0.08, 0.2)):
     y0, x0 = (h - hh) // 2, (w - ww) // 2
     a[y0:y0 + hh, x0:x0 + ww] = m[:min(hh, h), :min(ww, w - x0)]
     img[..., 3] = a
-    return kit.image_from_array('registration', img)
+    return kit.image_from_array('registration_' + ('w' if col[0] > 0.5 else 'd'), img)
 
 
 def hole_texture():

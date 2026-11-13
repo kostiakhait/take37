@@ -484,12 +484,12 @@ def build_decals(ctx):
     root, M = ctx['root'], ctx['M']
     out = {}
     for nm, sgn in (('R', 1), ('L', -1)):
-        x0, x1 = 1.80, 2.70
-        nxs, nys = seg(12, 6), 2
+        x0, x1 = 1.75, 2.75
+        nxs, nys = seg(16, 8), 4
         bm = bmesh.new()
         uvl = bm.loops.layers.uv.new('UVMap')
         g = []
-        hh = 0.072
+        hh = 0.085
         for iy in range(nys + 1):
             row = []
             for ix in range(nxs + 1):
@@ -498,7 +498,7 @@ def build_decals(ctx):
                 c = boom_centre(x)
                 dz = -hh + 2 * hh * iy / nys
                 ang = math.asin(max(-1, min(1, dz / (r * 1.06))))
-                y = sgn * (r * 0.92 * math.cos(ang) + 0.0015)
+                y = sgn * (r * 0.92 * math.cos(ang) + 0.006)
                 row.append(bm.verts.new((x, y, c.z + dz)))
             g.append(row)
         for iy in range(nys):
@@ -516,6 +516,39 @@ def build_decals(ctx):
         ob = kit.from_bm('Decal_Reg_' + nm, bm, [M['reg']], root, smooth=False)
         kit.tag(ob, 'Zone_TailBoom', 'intact', registration=P.REG)
         out['reg_' + nm] = ob
+    # the registration again on the blue mast fairing, white, both sides
+    for nm, sgn in (('R', 1), ('L', -1)):
+        bm = bmesh.new()
+        uvl = bm.loops.layers.uv.new('UVMap')
+        zc, hh = 1.86, 0.052
+        nx, nz = seg(10, 6), 2
+        g = []
+        for iz in range(nz + 1):
+            z = zc - hh + 2 * hh * iz / nz
+            t = (z - 1.46) / (2.44 - 1.46)
+            xr = 0.80 - 0.38 * t
+            a = (xr + 0.19) / 2
+            cx = (xr - 0.19) / 2
+            b = 0.35 - 0.18 * t
+            row = []
+            for ix in range(nx + 1):
+                x = cx - 0.30 + 0.60 * ix / nx
+                q = min(abs(x - cx) / a, 0.999)
+                y = b * (1 - q ** 3.2) ** (1 / 3.2)
+                row.append(bm.verts.new((x, sgn * (y + 0.002), z)))
+            g.append(row)
+        for iz in range(nz):
+            for ix in range(nx):
+                vs = [g[iz][ix], g[iz][ix + 1], g[iz + 1][ix + 1], g[iz + 1][ix]]
+                if sgn < 0:
+                    vs = vs[::-1]
+                f = bm.faces.new(vs)
+                for lp, (iu, iv) in zip(f.loops, [(ix, iz), (ix + 1, iz), (ix + 1, iz + 1), (ix, iz + 1)] if sgn > 0 else [(ix, iz + 1), (ix + 1, iz + 1), (ix + 1, iz), (ix, iz)]):
+                    t_ = iu / nx
+                    lp[uvl].uv = (1 - t_ if sgn > 0 else t_, iv / nz)
+        ob = kit.from_bm('Pylon_Decal_Reg_' + nm, bm, [M['reg_white']], root, smooth=False)
+        kit.tag(ob, 'Zone_MainRotor', 'intact', registration=P.REG)
+        out['regp_' + nm] = ob
     return out
 
 

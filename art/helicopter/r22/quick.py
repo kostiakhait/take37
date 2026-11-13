@@ -87,6 +87,12 @@ for v in arg('--views', 'side').split(','):
         d = {'side': (0, -30, 0), 'sideL': (0, 30, 0), 'top': (0, 0, 40), 'topU': (0, 0, 40), 'below': (0, 0, -40), 'front': (-30, 0, 0), 'back': (30, 0, 0)}[v]
         cam.location = ctr + Vector(d)
         cam.rotation_euler = {'side': (math.radians(90), 0, 0), 'sideL': (math.radians(90), 0, math.radians(180)), 'topU': (0, 0, math.radians(-90)), 'below': (math.radians(180), 0, 0), 'top': (0, 0, 0), 'front': (math.radians(90), 0, math.radians(-90)), 'back': (math.radians(90), 0, math.radians(90))}[v]
+    elif v in ('pilot', 'door_r', 'door_l', 'cockpit_l'):
+        cd.type = 'PERSP'
+        cam_pos, tgt, lens = {'pilot': ((0.30, 0.275, 1.46), (-1.2, 0.15, 1.0), 28), 'door_r': ((-0.3, 2.3, 1.6), (0.1, 0.2, 0.95), 34), 'door_l': ((-0.3, -2.3, 1.6), (0.1, -0.2, 0.95), 34), 'cockpit_l': ((0.5, -0.275, 1.40), (-1.0, 0.0, 1.0), 24)}[v]
+        cd.clip_start = 0.02
+        cam.location = Vector(cam_pos); cd.lens = lens
+        cam.rotation_euler = (Vector(tgt) - cam.location).to_track_quat('-Z', 'Y').to_euler()
     else:
         cd.type = 'PERSP'; cd.lens = float(arg('--lens', 35))
         a = {'three': (-1, -1, 0.5), 'rear3': (1, -1, 0.4), 'three_l': (-1, 1, 0.5), 'close': (-1, -1, 0.3), 'rear_r': (1, 1, 0.4), 'rear_l': (1, -1, 0.4), 'front_r': (-1, 1, 0.5), 'front_l': (-1, -1, 0.5), 'below_rear_r': (1, 1, -0.6), 'below_rear_l': (1, -1, -0.6), 'below_front': (-1, 0.8, -0.6)}[v]
