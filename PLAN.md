@@ -237,3 +237,23 @@ To do (nothing is deferred; each item is made, or asked of the owner, one questi
 7. Re-shoot `final_day` after the fillets (frames 01, 04, 27 show the old square corners).
 8. Not built: ambient autopilot air traffic (parked fighters are static), landing test (take-off only), the perspective ladder for ambient traffic untested.
 9. Open owner questions: distance of the coast (42 km measured, agent recommends 20-25 km for a chase); take-off direction (runway runs north-south, sea east: turn at once or later); default weather/time (day 13:24 or sunset 18:54); number of rounds; controls and camera of the flight; how Matthew gets from the car to the Mustang (path, cut-scene, controlled); score; voice lines; whether to attack frame time next.
+
+## Status 2026-11-13 (evening; owner's decisions and what is pushed)
+
+Pushed (origin github.com/kostiakhait/take37): main, buildings, mirrors, scene2, scene3; ferret branch `morph` (cedae32c). Uncommitted in worktrees: the mirrors work (D:/temp/take37/mirror_wt, inner mirror removed, see below), the damage agents' files for the other five cars.
+
+Accepted by the owner:
+- police cab (0776455) "acceptable, not ideal";
+- coupe damage sample (27 variants, 24fce52): the owner accepted the agent's work; the batch for hatchback, minivan, pickup, sedan, wagon (27 variants each) was launched 2026-11-13; the police car is not in this batch; game side still lacks corner hit types (`HitSide` in view.ts: front_corner and rear_corner variants need it);
+- gas station: canopy break into 9 panels (seq5 blast-with-collapse frames accepted); the fire look pass (2030b09: orange tongues, stronger at the pumps, thick tall smoke, soot) is accepted as is; known and accepted: soot too heavy on the forecourt, blast frame ~807 ms, yellow-white root at the pumps, white shock cloud over the minimart, stray pole lying in the blast frames;
+- R22 helicopter (0c25eed, 89322d2): delivered; the owner calls it "a toy helicopter", no re-run for now; defects: bulbous cowl, grey side glass from outside, overlapping gauge labels.
+
+Mirrors (owner's order: simplest picture, just see what is behind the car, close the task fast):
+- the inside mirror is removed (nodes Mirror_Inner / Mirror_Inner_Glass out of both cab glb files, cab.py, carspec.ts; two door mirrors remain); not yet committed;
+- open: the mirror pass costs ~+300-400 ms a frame (595 ms on, ~200-277 off); the refraction/transmission hypothesis did not hold in the last measurement (refraction off: 1110 ms, noisy: other agents on the GPU); the minimal variant proposed: mirror target 128 px, range 50 m, 5 Hz; waits for the owner's go.
+
+Emily (character look under owner's revision, nothing is done to looks): evaluation export of Fab "Modern Female Character" in D:/temp/take37/emily (README.md, facts.md, sheets): 8,948 tris, 1 LOD, 85 bones, 0 morph targets, 1.975 m, hair cards, clothes in the body mesh, 7 clips work in the Ferret viewer; no licence text found; the owner decides if it is used.
+
+Scene 3: see the section above (airfield built, to-do list and open questions); the field agent is stopped.
+
+Still open for the owner: damage rework of the coupe defects (glass patches, soft metal, rear of front-hit cars) if wanted; mirrors go; scene 2 (claw fingers, jacket slivers, beach uniformity, lorry in surf, wire; real man-overboard event); scene 3 questions; helicopter flight and damage model (physics-rotor) not yet commissioned; delete the stray empty folder C:\frames_static.
