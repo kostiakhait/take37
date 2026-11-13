@@ -135,6 +135,21 @@ def fix_doors(B):
             bm.free()
             B.log('door', k, 'library mirror faces removed:', nm0, 'moulding faces removed:', len(bad) - nm0)
 
+    # where the door glass's top front corner meets the windscreen's edge the library's seal strips cross in a wedge that sticks out of the pillar: those seal / chrome faces are removed (rays from the eye found them)
+    for gname, sg in (('Glass_FL', 1), ('Glass_FR', -1), ('Glass', 1), ('Glass', -1)):
+        go = bpy.data.objects.get(gname)
+        if go is None:
+            continue
+        bm = bmesh.new()
+        bm.from_mesh(go.data)
+        mw = go.matrix_world
+        mts = go.data.materials
+        bad = [f for f in bm.faces if mts[f.material_index] is not None and mts[f.material_index].name in ('M_seal', 'M_chrome')
+               and all(0.33 < (mw @ v.co).x < 0.46 and 0.53 < sg * (mw @ v.co).y < 0.68 and 1.20 < (mw @ v.co).z < 1.33 for v in f.verts)]
+        bmesh.ops.delete(bm, geom=bad, context='FACES')
+        bm.to_mesh(go.data)
+        bm.free()
+        B.log('glass', gname, sg, 'corner wedge faces removed:', len(bad))
     # the library's A-pillar spotlights (a black ball on a handle reaching into the cab, in the shared Trim object) are taken off: they read as a ball on a stick inside the cab
     tr = bpy.data.objects.get('Trim')
     if tr is not None:
@@ -166,7 +181,7 @@ def build_interior(B, CK, Mesh, root):
         m.cyl(V3((0.20, s * 0.14, 0.40)), V3((0.20, s * 0.56, 0.40)), 0.007, 'brightwork', seg=8)
     m.rbox(V3((-0.02, 0, 0.40)), (0.48, 1.36, 0.06), 0.01, 'black')
     m.rbox(V3((-0.22, 0, 0.66)), (0.46, 0.17, 0.085), 0.03, 'seatcloth')
-    m.rbox(V3((-0.22, 0, 0.565)), (0.40, 0.15, 0.10), 0.01, 'seatcloth')     # the folded centre armrest rests on the bench: a filler under it (the check for floating parts found a gap of 6 cm)
+    m.rbox(V3((-0.22, 0, 0.50)), (0.40, 0.15, 0.24), 0.01, 'seatcloth')     # the folded centre armrest rests on the bench: a filler under it (the check for floating parts found a gap of 6 cm)
     # the rear bench
     ex, ey, ez = axes(-4)
     CK.cushion(m, V3((-1.18, 0, 0.48)), ex, ey, ez, 0.50, 1.24, 0.13, pleats=12, kind='seatcloth', piping='seatcloth')
