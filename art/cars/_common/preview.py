@@ -39,6 +39,19 @@ def gpu():
 def main():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=arg('--glb'))
+    pose = arg('--pose')
+    if pose:      # lay the car on its roof (roof) or on its left/right side (left|right) and let it rest on the ground
+        import numpy as np
+        root = next(o for o in bpy.data.objects if o.type == 'EMPTY' and o.parent is None)
+        root.rotation_mode = 'XYZ'
+        root.rotation_euler = {'roof': (math.pi, 0, 0), 'left': (math.radians(90), 0, 0), 'right': (math.radians(-90), 0, 0)}[pose]
+        bpy.context.view_layer.update()
+        zs = []
+        for o in bpy.data.objects:
+            if o.type == 'MESH' and o.name.startswith(('Body', 'Hood', 'Trunk', 'Door_', 'Tailgate')):
+                zs.append(min((o.matrix_world @ v.co).z for v in o.data.vertices))
+        root.location.z -= min(zs)
+        bpy.context.view_layer.update()
     for hn in (arg('--hide', '') or '').split(','):
         if hn and hn in bpy.data.objects:
             bpy.data.objects[hn].hide_render = True
