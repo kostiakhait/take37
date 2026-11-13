@@ -10,7 +10,8 @@ import { readStrands, ribbons, bindToHead, bindNearest } from 'file:///D:/REPO/f
 import { scalpTint, scalpMatte } from 'file:///D:/REPO/ferret/tools/humans/mh/groom.mjs'
 import { robe, belt, hat, fabric, bodyRegions, mantle } from 'file:///D:/REPO/ferret/tools/humans/mh/garment.mjs'
 import { dreadlocks, dreadTubes } from './dreads.mjs'
-import { shave, shaveNormal, makeup } from './skin.mjs'
+import { shave, shaveNormal, makeup, darkLashes } from './skin.mjs'
+import { lashStrands } from './lashes.mjs'
 import { bullHead, growFur } from 'file:///D:/REPO/ferret/tools/humans/mh/bull.mjs'
 
 const RED = { root: [0.16, 0.035, 0.012], tip: [0.36, 0.1, 0.03] }
@@ -22,9 +23,10 @@ const SPECS = {
   edward: { export: 'T37_Edward', scalp: [0.02, 0.015, 0.01], clothing: 'edward', grooms: [
     { g: 'Hair__Hair_L_Straight', root: [0.012, 0.009, 0.006], tip: [0.022, 0.016, 0.011], jitter: 0.12, step: 1, w: 0.0004, seg: 14, tubes: { cell: 0.026, radius: 0.0068 } },
     { g: 'Eyebrows__Eyebrows_M_Full', ...BR([0.02, 0.014, 0.01], [0.04, 0.03, 0.02]) }] },
-  emily: { export: 'T37_EmilyM', makeup: {}, pumps: true, scalp: [0.5, 0.36, 0.15], clothing: process.env.DRESS ?? 'emilyA', grooms: [
-    { g: 'Hair__Hair_L_Straight', root: [0.5, 0.36, 0.15], tip: [0.95, 0.76, 0.42] },
-    { g: 'Eyebrows__Eyebrows_M_SlightArch', ...BR([0.3, 0.2, 0.08], [0.45, 0.32, 0.14]) }] },
+  // Emily: warm dark blonde (русые); brows one tone darker than the hair (same hue), lashes dark brown, dense, longer at the outer corner
+  emily: { export: 'T37_EmilyM', makeup: {}, pumps: true, scalp: [0.15, 0.09, 0.035], clothing: process.env.DRESS ?? 'emilyA', lashes: { cards: 0, density: 12, outer: 1.2, root: [0.02, 0.012, 0.007], tip: [0.04, 0.025, 0.014] }, grooms: [
+    { g: 'Hair__Hair_L_Straight', root: [0.15, 0.09, 0.035], tip: [0.42, 0.29, 0.13] },
+    { g: 'Eyebrows__Eyebrows_M_SlightArch', step: 1, w: 0.00016, ...BR([0.065, 0.039, 0.016], [0.14, 0.09, 0.038]) }] },
   vincent: { export: 'Walter', scalp: [0.3, 0.29, 0.27], clothing: 'vincent', grooms: [
     { g: 'Hair__Hair_L_MessyClumps', root: [0.3, 0.29, 0.27], tip: [0.62, 0.6, 0.57] },
     { g: 'Beards__Beard_L_Messy', root: [0.33, 0.32, 0.3], tip: [0.62, 0.6, 0.57], w: 0.00017, extend: 0.1 },
@@ -106,6 +108,9 @@ for (const G of S.grooms) {
   console.log(G.g, st.nS, 'strands, bound', b.meanMoveMm.toFixed(1), 'mm, miss', b.miss)
   if (G.g.startsWith('Hair__')) hairPts = st.pos
 }
+if (S.lashes && !process.env.NOLASH) { const ls = lashStrands(dna, { gdy, ...S.lashes }); console.log('lash strands:', ls.nS)
+  strandGrooms.push({ name: 'eyelashes', ribbons: ribbons(ls, { step: 1, seg: 5, w: 0.00011, root: S.lashes.root, tip: S.lashes.tip, jitter: 0.1, shadowK: 0.2 }) }) }
+const texOverride = S.lashes ? { Eyelashes_Color: await darkLashes(fs.readFileSync(`${DIR}/Maps/Eyelashes_Color.png`), [30, 17, 10], S.lashes.cards ?? 1) } : {}
 // scalp tint under the main hair
 const hairName = S.grooms[0]?.g.split('__')[1]
 let headBasecolor = hairName && await scalpTint(`${TEX}/face_BASECOLOR.png`, 'D:/temp/mh/grooms', hairName, { color: S.scalp, strength: 0.9 })
@@ -172,5 +177,5 @@ if (S.bull) {
   console.log('bull at', at.map((x) => x.toFixed(3)), 'fur', B.fur.nS, 'head verts', B.raw.pos.length / 3)
 }
 for (const G of S.grooms) if (!G.tubes) strandGrooms.push({ name: G.g.split('__')[1], ribbons: ribbons(G.st, { step: G.step ?? TIER.step, seg: Math.max(3, Math.round((G.seg ?? 8) * TIER.segk)), w: (G.w ?? 0.0002) * (G.step ? 1 : TIER.wk), root: G.root, tip: G.tip, jitter: G.jitter ?? 0.3, shadowK: 0.5 }) })
-fs.writeFileSync(out, await buildGlb(DIR, { hide, raise, skin: process.env.SKIN === '1', headLod: TIER.lod, bodyLod: TIER.lod, texMax: TIER.tex, headSrmf, headNormal, texDir: TEX, strandGrooms, extraMeshes, headBasecolor, kinds }))
+fs.writeFileSync(out, await buildGlb(DIR, { hide, raise, skin: process.env.SKIN === '1', headLod: TIER.lod, bodyLod: TIER.lod, texMax: TIER.tex, headSrmf, headNormal, texOverride, texDir: TEX, strandGrooms, extraMeshes, headBasecolor, kinds }))
 console.log(out)
