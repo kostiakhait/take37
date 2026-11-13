@@ -147,3 +147,7 @@ Prerequisites (owner: the cars need not be perfect, they are taken as they are):
 
 The view is first person and the player's head does not turn back, so of the police car only the parts seen from the driver's seat are drawn: the cab (dashboard, wheel, pillars, mirrors, headliner, seats as seen), the inner faces of the doors and the glass, and the outside only where it shows through the windscreen and the side windows (the hood, the front wings, the mirrors). Everything else of the car (the body sides and rear, the wheels, the underside, the boot) is not drawn while the camera is in the cab; it is drawn again in the third-person and set cameras and after the player jumps out.
 This is to be a general mechanism of the engine, not a game trick: for any object seen from inside (a cab, a cockpit, a room), the parts that cannot be seen from the inside viewpoint and its allowed head movement are not drawn (computed once per object and viewpoint, kept as a visibility set).
+
+## Trees: leaves and bark (owner's task 2026-11-12)
+
+The foliage of the street's trees is to be improved, most likely through its textures (the leaf cards' colour, alpha and normal maps); the rest of the trees (shape, placement, sway) is fine as it is. The bark is to be improved the same way, by its texture.
