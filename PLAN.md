@@ -163,3 +163,47 @@ Hybrid: a hit makes a breach, the engine's vessel physics (compartments, breache
 ### Falls of people (owner's decision 2026-11-12)
 
 People fall through the engine's character and animation modules: fall clips (the combat module's death clips by the side of the hit, retargeted), the position carried by Walkers (so a tilting or sinking deck slides them and drops them overboard), a ballistic body under the figure when a blast throws him with the falling pose blended in, and IK so the feet meet deck, mole and sand. A trial scene of falls (bullets from front, side, behind; overboard from a heeling deck; blast throw) is made first and shown to the owner; a physical ragdoll (joints on the Havok kernel) is made only if the clips do not convince. Mechanics of scene 2 are built after its field and assets.
+
+## Scene 3: plane race (owner's description 2026-11-12)
+
+Only what the owner has said is fixed here; everything else is listed under "Open" and is asked, not invented.
+
+### Place
+
+A small provincial airfield: a runway, a taxiway, hangars. A Robinson R22 helicopter stands on the runway ready for take-off. Different aeroplanes of our collection stand on the taxiway, among them a P-51 Mustang. Whether the library has the R22 and the Mustang is to be checked before building.
+
+### Prologue
+
+Vincent kidnaps Emily and takes her away in the R22. As the helicopter lifts off, a police car drives onto the airfield; Matthew gets out of it and climbs into the Mustang.
+
+### Mission
+
+Take off in the Mustang, catch the helicopter, shoot it down, and while it is falling bring the Mustang level with it so that Emily can get onto the wing.
+
+- Weapons: the Mustang's own machine guns. The ammunition is limited.
+- The helicopter must be shot down so that it falls as a whole: the fall is physical (loss of lift or tail rotor, spin), not a prepared clip.
+- Emily moves to the wing by herself: she jumps. The jump succeeds when the player holds the Mustang beside the falling helicopter within a narrow window of distance, speed and bank. Outside the window the jump fails.
+
+### Epilogue
+
+The Mustang flies into the sunset sea with Emily standing on the wing.
+
+### The take is spoiled (cut) when
+
+- the helicopter is not shot down;
+- the helicopter falls with Emily aboard (she is not on the wing);
+- the helicopter blows up in the air;
+- the jump fails and Emily does not land on the wing.
+
+### The take is a wrap when
+
+The helicopter is shot down and falls as a whole, the Mustang is level with it inside the window, Emily jumps and stands on the wing; then the epilogue.
+
+### Open (to be asked, one question at a time)
+
+- Number of rounds, and how many hits the R22 takes before it loses control (to be tuned in play).
+- Controls of the flight (keyboard, gamepad) and the camera (cockpit or outside).
+- How Matthew gets from the police car to the Mustang (on foot, how far, whether the player controls it).
+- Whether the score of the scene depends on anything besides success (spectacle of the fall, time).
+- Voice lines and the director's reaction for this scene.
+- Weather and time of day of the airfield (the epilogue is a sunset).
