@@ -409,7 +409,7 @@ def build_mirrors(B, Mesh, root):
             nn = V3(r[2])
             return V3(r[1]), (nn if nn.dot(out) > 0 else -nn)
         m = Mesh()
-        corners = [(0.79, 0.815), (0.60, 0.815), (0.74, 0.903)]
+        corners = [(0.79, 0.835), (0.60, 0.835), (0.74, 0.925)]
         NG = 6                                    # the plate is a fan of small triangles: every vertex of its back is on the (curved) skin
         grid = {}
         for i in range(NG + 1):
@@ -454,7 +454,7 @@ def build_mirrors(B, Mesh, root):
             q = grid[k0][2]
             n0 = grid[k0][3]
             m.cyl(q - n0 * 0.001, q + n0 * 0.005, 0.0045, 'brightwork', seg=8)
-        hinge = cen + V3((-0.010, s * 0.055, 0.066))
+        hinge = cen + V3((-0.010, s * 0.055, 0.115))
         n = _aim(hinge, V3((-12.0, s * 1.6, 1.0)))
         ex, ey, ez = frame_of(n)
         head = hinge + ez * 0.045
@@ -557,24 +557,38 @@ def build_pillars(B, Mesh, root):
         rf = _edge([rg], side, lambda v: v.x, zs)                                               # the rear door glass, front edge
         rd = _edge([rg], side, lambda v: -v.x, zs)                                              # ... its rear edge
         bl = _edge([glass], lambda v: v.x < -1.0 and side(v), lambda v: v.y * s, zs)          # the backlight's side edge
-        # the A pillar: one thin strip of the interior's trim, 7 cm wide, along the middle of the gap between the windscreen's edge and the front door glass's edge (the greenhouse's pillar is
-        # 6 to 15 cm between those edges; the trim covers the middle of it and the rubber of the glass edges stays visible on both sides), crowned toward the cabin
-        # the middle line of the gap and its direction are fitted over the rows where the two glass edges are clearly apart (they cross near the roof), then evaluated on every row: a smooth strip
-        good = [(pa, pb) for pa, pb in zip(ws, fr) if pa is not None and pb is not None and (pb - pa).length > 0.06]
+        # the A pillar: ONE closed solid (its own object, no open edges), swept from the roof rail down to the dash. Its centre line and width are fitted over the rows where the windscreen's
+        # edge and the door glass's edge are clearly apart; it covers the whole gap between them (plus 2 cm each side) and sinks 3 cm into the body behind, so no glass seal, shell edge or
+        # gap shows round it; the cabin side is a smooth crown.
+        good = [(pa, pb) for pa, pb in zip(ws, fr) if pa is not None and pb is not None and (pb - pa).length > 0.05]
         zz = [0.5 * (pa.z + pb.z) for pa, pb in good]
-        cx = [0.5 * (pa.x + pb.x) for pa, pb in good]
-        cy = [0.5 * (pa.y + pb.y) for pa, pb in good]
-        px, py = np.polyfit(zz, cx, 2), np.polyfit(zz, cy, 2)
-        d0 = V3((good[len(good) // 2][1].x - good[len(good) // 2][0].x, good[len(good) // 2][1].y - good[len(good) // 2][0].y, 0)).normalized()
-        rows = []
-        for z in zs:
-            c = V3((float(np.polyval(px, z)), float(np.polyval(py, z)), z))
-            hw = 0.0375
-            inn = V3((0, -s, 0))
-            rows.append([c + d0 * (hw * (-1 + 2 * j / 6)) + inn * (0.014 * math.sin(math.pi * j / 6)) for j in range(7)])
-        if len(rows) >= 3:
-            m.grid(rows, 'headliner')
-            m.grid([list(reversed(r)) for r in rows], 'headliner')
+        pcx, pcy = np.polyfit(zz, [0.5 * (pa.x + pb.x) for pa, pb in good], 1), np.polyfit(zz, [0.5 * (pa.y + pb.y) for pa, pb in good], 1)
+        pw = np.polyfit(zz, [(pb - pa).length for pa, pb in good], 1)
+        zlo, zhi = 0.93, 1.335
+        rings = []
+        NZ = 24
+        for iz in range(NZ + 1):
+            z = zlo + (zhi - zlo) * iz / NZ
+            c = V3((float(np.polyval(pcx, z)), float(np.polyval(pcy, z)), z))
+            tz = V3((float(pcx[0]), float(pcy[0]), 1.0)).normalized()
+            wid = max(0.09, float(np.polyval(pw, z)) + 0.04)
+            across = V3((-0.45, s * 0.89, 0)).normalized()
+            across = (across - tz * across.dot(tz)).normalized()
+            dep = tz.cross(across)
+            if dep.dot(V3((-0.15, 0.37, 1.18)) - c) < 0:
+                dep = -dep
+            hw = wid / 2
+            prof = [(-hw, -0.03), (-hw, 0.006), (-hw * 0.8, 0.017), (-hw * 0.45, 0.024), (0, 0.027), (hw * 0.45, 0.024), (hw * 0.8, 0.017), (hw, 0.006), (hw, -0.03)]
+            rings.append([c + across * u + dep * w for u, w in prof])
+        pm = Mesh()
+        pv = [[pm.bm.verts.new(p) for p in r] for r in rings]
+        nr = len(prof)
+        for i in range(NZ):
+            for j in range(nr):
+                pm.face([pv[i][j], pv[i][(j + 1) % nr], pv[i + 1][(j + 1) % nr], pv[i + 1][j]], 'headliner')
+        pm.face(list(reversed(pv[0])), 'headliner')
+        pm.face(pv[-1], 'headliner')
+        pm.finish('PillarA_' + k, root, sharp=50)
         for a, b, bulge in ((fd, rf, 0.015), (rd, bl, 0.02)):
             rows = []
             for pa, pb in zip(a, b):
