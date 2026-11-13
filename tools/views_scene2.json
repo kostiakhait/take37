@@ -1,0 +1,10 @@
+{ "rung": 0, "t": 0, "shots": [
+  { "name": "01_start_60m_before_mole", "p": [0, 1.8, -130], "t": [0, 4, 180], "fov": 0.95 },
+  { "name": "02_mole_from_start", "p": [0, 6.2, -60], "t": [0, 4, 180], "fov": 0.95 },
+  { "name": "03_mole_end_looking_out", "p": [0, 6.2, 170], "t": [0, 0, 700], "fov": 0.95 },
+  { "name": "04_mole_from_sea_east", "p": [60, 8, 140], "t": [0, 2, 20], "fov": 0.95 },
+  { "name": "05_beach_left", "p": [-120, 3, -110], "t": [-30, 3, 0], "fov": 1.0 },
+  { "name": "06_beach_right_surf", "p": [120, 3, -30], "t": [180, 0, 40], "fov": 1.0 },
+  { "name": "07_high_overview", "p": [-80, 120, -260], "t": [0, 0, 100], "fov": 0.95 },
+  { "name": "08_dunes_back", "p": [0, 8, 60], "t": [0, 6, -300], "fov": 1.0, "time": 0 }
+] }
