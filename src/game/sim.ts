@@ -11,6 +11,8 @@ import type { Box, Layout, PropDef } from './layout';
 import { Rng } from './rng';
 import { ShopSim } from './shopfronts';
 import { blastAt } from '@ferret/physics-explosions';
+import { gridBlock, flingPieces } from '@ferret/destruction/fracture';
+import type { PieceSpec } from '@ferret/destruction/types';
 
 export type Role = 'player' | 'vincent' | 'traffic' | 'parked' | 'tanker';
 export interface Controls { throttle: number; brake: number; steer: number }
@@ -25,7 +27,7 @@ export interface Car {
   /** it started moving by itself or was parked */ parkedAt?: Vec3; occupied: boolean; ejected: boolean;
   fuelKg: number;
 }
-export interface Debris { id: number; ref: string; pos: Vec3; vel: Vec3; rot: Quat; ang: Vec3; half: Vec3; mass: number; resting: boolean; age: number; node?: string; kind: string }
+export interface Debris { id: number; ref: string; pos: Vec3; vel: Vec3; rot: Quat; ang: Vec3; half: Vec3; mass: number; resting: boolean; age: number; node?: string; kind: string; /** a held piece of a broken roof: the sim time it lets go, its place in the plan, whether it has struck the ground */ held?: number; piece?: number; hit?: boolean }
 export interface Prop {
   def: PropDef; id: string; state: 'whole' | 'down' | 'gone'; capacityJ: number; knocked: boolean;
   /** station parts: what they are */ station?: { fuelL: number; burnable: boolean; explosive: boolean; supports?: string; lit: boolean };
@@ -35,6 +37,7 @@ export type SimEvent =
   | { t: number; type: 'scrape'; car: string; at: Vec3; speed: number; dir: Vec3 }
   | { t: number; type: 'detach'; car: string; part: string; at: Vec3 }
   | { t: number; type: 'wreck'; car: string; role: Role; kind: KindId; at: Vec3; depth: number; cause: string | null }
+  | { t: number; type: 'rubble'; id: string; at: Vec3; speed: number; mass: number; onto: string | null }
   | { t: number; type: 'prop'; id: string; kind: string; at: Vec3; how: 'knocked' | 'broken' | 'fell'; depth: number }
   | { t: number; type: 'blast'; id: string; at: Vec3; tnt: number; depth: number; what: string }
   | { t: number; type: 'ignite'; id: string; at: Vec3; power: number; what: string; depth: number }
@@ -128,6 +131,7 @@ export class Sim {
       this.props.push({ def: { id: s.id, kind: s.id.replace(/_\d+$/, ''), mass: s.mass, box: s.box, cls }, id: s.id, state: 'whole', capacityJ: cap, knocked: false, station: { fuelL: s.fuelL, burnable: s.burnable, explosive: s.explosive, supports: s.supports, lit: s.lit } });
     }
     for (const pr of this.props) this.defineProp(pr);
+    this.planCanopy(seed);
     if (layout.shops && layout.shops.parts.length > 0) this.shops = new ShopSim(this, layout.shops, hullVsBox);
   }
 
@@ -419,6 +423,7 @@ export class Sim {
   /** a prop leaves its place as a body that flies, tumbles and lands */
   throwProp(pr: Prop, vel: Vec3, cause: string | null, how: 'knocked' | 'broken' | 'fell', depth: number) {
     if (pr.state !== 'whole') return;
+    if (pr.id === 'Canopy' && this.canopy) { this.breakCanopy(pr, vel, cause, how, depth); return; }
     pr.state = 'down'; pr.knocked = true;
     const b = pr.def.box, half: Vec3 = [(b.max[0] - b.min[0]) / 2, (b.max[1] - b.min[1]) / 2, (b.max[2] - b.min[2]) / 2];
     const base: Vec3 = [mid(b)[0], b.min[1] + half[1], mid(b)[2]];
@@ -428,10 +433,54 @@ export class Sim {
     if (cause) this.markActive(pr.id, depth);
   }
 
+  // ---- the roof of the station: pre-fractured into panels that tear loose, fall, tilt, slide and crush what stands under them ----
+  /** the engine's pre-fracture of the roof slab (`gridBlock`, by seed): the panels' sizes, places and masses; null when the street has no canopy */
+  canopy: { pieces: PieceSpec[]; centre: Vec3; seed: number } | null = null;
+  private planCanopy(seed: number) {
+    const pr = this.props.find((p) => p.id === 'Canopy'); if (!pr) return;
+    const b = pr.def.box, size: Vec3 = [b.max[0] - b.min[0], b.max[1] - b.min[1], b.max[2] - b.min[2]];
+    const r = gridBlock({ size, mass: pr.def.mass, budget: 1e9, fractureEnergy: 1e3, seed: (seed ^ 0xca909) >>> 0, maxPieces: 9 });
+    if (r.pieces.length < 2) return;
+    this.canopy = { pieces: r.pieces, centre: mid(b), seed: (seed ^ 0xca909) >>> 0 };
+  }
+  /** the roof lets go: each panel is a body of its own mass and size; those nearest a standing column hold a moment longer, the rest drop at once, tilting away from the support that is left */
+  private breakCanopy(pr: Prop, vel: Vec3, cause: string | null, how: 'knocked' | 'broken' | 'fell', depth: number) {
+    const plan = this.canopy!, c = plan.centre, rng = new Rng(plan.seed ^ 0x51);
+    pr.state = 'down'; pr.knocked = true;
+    const cols = this.props.filter((p) => /^CanopyColumn/.test(p.id) && p.state === 'whole').map((p) => mid(p.def.box));
+    // the engine's scatter: the panels' kinetic energy is what the fall and the push give, spread from the roof's centre
+    const m = pr.def.mass, push = Math.hypot(vel[0], vel[2]);
+    const specs = plan.pieces.map((q) => ({ ...q, velocity: [0, 0, 0] as Vec3, angular: [0, 0, 0] as Vec3 }));
+    flingPieces(specs, [0, 0, 0], [vel[0] * 0.3, 0.6, vel[2] * 0.3], 0.5 * m * (3 + 0.5 * push * push) * 0.35, plan.seed);
+    specs.forEach((q, i) => {
+      const at: Vec3 = [c[0] + q.offset[0], c[1] + q.offset[1], c[2] + q.offset[2]];
+      let near = 99, toward: Vec3 = [0, 0, 0];
+      for (const k of cols) { const d = Math.hypot(k[0] - at[0], k[2] - at[2]); if (d < near) { near = d; toward = [k[0] - at[0], 0, k[2] - at[2]]; } }
+      const delay = cols.length ? 0.05 + rng.range(0, 0.3) + Math.max(0, 0.16 * (7 - near)) : rng.range(0, 0.35) + 0.05 * Math.hypot(q.offset[0], q.offset[2]);
+      // the free edge drops: a turn about the horizontal axis across the way to the nearest standing support (or a seeded one when none is left)
+      const dir: Vec3 = cols.length ? [toward[0] / (near || 1), 0, toward[2] / (near || 1)] : [Math.cos(i * 2.4), 0, Math.sin(i * 2.4)];
+      const spin = rng.range(0.5, 1.6) * (cols.length ? 1 : 1.3), sgn = rng.chance(0.5) ? 1 : -1;
+      const ang: Vec3 = [-dir[2] * spin * sgn + q.angular[0], rng.range(-0.4, 0.4) + q.angular[1], dir[0] * spin * sgn + q.angular[2]];
+      this.debris.push({ id: this.nextDebris++, ref: 'Canopy#' + i, pos: at, vel: [q.velocity[0] + vel[0] * 0.2, q.velocity[1] + Math.max(0, vel[1]) * 0.2, q.velocity[2] + vel[2] * 0.2], rot: [0, 0, 0, 1], ang, half: [q.size[0] / 2, q.size[1] / 2, q.size[2] / 2], mass: q.mass, resting: false, age: 0, kind: 'canopy-piece', held: this.t + delay, piece: i });
+    });
+    this.emit({ t: this.t, type: 'prop', id: pr.id, kind: pr.def.kind, at: c, how, depth });
+    if (cause) this.markActive(pr.id, depth);
+  }
+  /** a standing thing under a falling panel that it would hit: the tops of the pumps, the propane cage, the islands' fittings */
+  private underPiece(d: Debris, hx: number, hz: number, low: number): Prop | null {
+    for (const p of this.props) {
+      if (p.state !== 'whole' || !/^(Pump|PropaneCage|IceChest|AirStand|OilRack|TyreStack|NewsBox|Bin|PriceSign|Lamp)/.test(p.id)) continue;
+      const b = p.def.box;
+      if (d.pos[0] + hx > b.min[0] && d.pos[0] - hx < b.max[0] && d.pos[2] + hz > b.min[2] && d.pos[2] - hz < b.max[2] && low < b.max[1] - 0.05 && d.pos[1] > b.min[1]) return p;
+    }
+    return null;
+  }
+
   /** a body with a velocity under gravity: lands on the ground, bounces a little, slides to rest */
   private stepDebris(dt: number) {
     for (const d of this.debris) {
       if (d.resting) continue;
+      if (d.held !== undefined && this.t < d.held) continue;       // a panel still hanging on its fixings
       d.age += dt;
       d.vel[1] -= G * dt;
       d.pos = add(d.pos, mul(d.vel, dt));
@@ -441,11 +490,33 @@ export class Sim {
       const ax: Vec3[] = [qRot(d.rot, [1, 0, 0]), qRot(d.rot, [0, 1, 0]), qRot(d.rot, [0, 0, 1])];
       const reach = d.half[0] * Math.abs(ax[0]![1]) + d.half[1] * Math.abs(ax[1]![1]) + d.half[2] * Math.abs(ax[2]![1]);
       const gh = this.ground.height(d.pos[0], d.pos[2]);
-      if (d.pos[1] - reach < gh) {
-        d.pos[1] = gh + reach;
-        if (d.vel[1] < 0) d.vel[1] *= -0.28;
-        d.vel[0] *= 0.82; d.vel[2] *= 0.82; d.ang = mul(d.ang, 0.7);
-        if (len(d.vel) < 0.35 && wl < 0.8) { d.resting = true; d.vel = [0, 0, 0]; d.ang = [0, 0, 0]; }
+      const roof = d.kind === 'canopy-piece';
+      if (roof && d.vel[1] < 0) {
+        // a panel comes down on a pump: the pump is knocked out from under it and the panel loses part of its speed
+        const hx = d.half[0] * Math.abs(ax[0]![0]) + d.half[1] * Math.abs(ax[1]![0]) + d.half[2] * Math.abs(ax[2]![0]), hz = d.half[0] * Math.abs(ax[0]![2]) + d.half[1] * Math.abs(ax[1]![2]) + d.half[2] * Math.abs(ax[2]![2]);
+        const hit = this.underPiece(d, hx, hz, d.pos[1] - reach);
+        if (hit) {
+          const sp = Math.abs(d.vel[1]);
+          this.throwProp(hit, [d.vel[0] * 0.5 + this.rng.range(-1, 1), 1 + 0.3 * sp, d.vel[2] * 0.5 + this.rng.range(-1, 1)], 'Canopy', 'broken', 3);
+          this.emit({ t: this.t, type: 'rubble', id: d.ref, at: [d.pos[0], hit.def.box.max[1], d.pos[2]], speed: sp, mass: d.mass, onto: hit.id });
+          d.vel = mul(d.vel, 0.55); d.ang = add(d.ang, [this.rng.range(-0.8, 0.8), 0, this.rng.range(-0.8, 0.8)]);
+        }
+      }
+      if (d.pos[1] - reach < gh + (roof ? 0.35 : 0)) {
+        if (d.pos[1] - reach < gh) d.pos[1] = gh + reach; else if (roof && d.vel[1] < 0) d.vel[1] *= 0.5;
+        if (roof && !d.hit && d.vel[1] < -1.5) { d.hit = true; this.emit({ t: this.t, type: 'rubble', id: d.ref, at: [d.pos[0], gh, d.pos[2]], speed: -d.vel[1], mass: d.mass, onto: null }); }
+        if (d.vel[1] < 0 && d.pos[1] - reach < gh + 0.01) d.vel[1] *= roof ? (d.vel[1] > -2 ? 0 : -0.12) : -0.28;
+        if (roof) {
+          // a slab slides on its edge and settles flat: the face most nearly down is turned to the ground
+          d.vel[0] *= 0.955; d.vel[2] *= 0.955; d.ang = mul(d.ang, 0.8);
+          let k = 0; for (let i = 1; i < 3; i++) if (d.half[i]! < d.half[k]!) k = i;      // the thinnest face goes down: a panel lies flat, never on its end
+          const a = mul(ax[k]!, Math.sign(ax[k]![1]) || 1), turn = cross(a, [0, 1, 0]), tl = len(turn);
+          if (tl > 1e-4) d.rot = mulQ(qAxisAngle(mul(turn, 1 / tl), Math.asin(Math.min(1, tl)) * (1 - Math.exp(-11 * dt))), d.rot);
+          if (len(d.vel) < 0.3 && wl < 0.5 && tl < 0.03) { d.resting = true; d.vel = [0, 0, 0]; d.ang = [0, 0, 0]; }
+        } else {
+          d.vel[0] *= 0.82; d.vel[2] *= 0.82; d.ang = mul(d.ang, 0.7);
+          if (len(d.vel) < 0.35 && wl < 0.8) { d.resting = true; d.vel = [0, 0, 0]; d.ang = [0, 0, 0]; }
+        }
       }
     }
   }

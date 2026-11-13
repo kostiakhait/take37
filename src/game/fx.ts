@@ -144,6 +144,15 @@ export class FxDirector {
         this.addTrauma(0.7, dPlayer(e.at), 140, 1);
         break;
       }
+      case 'rubble': {
+        // a roof panel strikes the ground or a pump: a cloud of dust along the ground, sparks of torn metal, a thud in the shake (the harder, the more)
+        const E = 0.5 * e.mass * e.speed * e.speed, at: V3 = [e.at[0], Math.max(0.15, e.at[1]), e.at[2]];
+        this.cheap('take37.dirt-kick', [at[0], Math.min(at[1], 0.3), at[2]], { energy: clamp(E * 0.5, 4e3, 400e3) }, 260);
+        this.cheap('take37.sparks', at, { energy: clamp(E * 0.4, 8e3, 600e3) }, 260);
+        if (E > 30e3) this.cheap('dust.collapse', [at[0], Math.min(at[1], 0.3), at[2]], { size: clamp(Math.cbrt(E / 1e3) * 0.9, 2, 7) }, 260);
+        this.addTrauma(clamp(Math.sqrt(E / 4e6), 0, 0.5), dPlayer(at), 110, 0.8);
+        break;
+      }
       case 'prop': this.propBroken(e); break;
     }
   }

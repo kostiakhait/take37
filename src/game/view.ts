@@ -257,6 +257,7 @@ export class GameView {
     this.events(take);
     // cars
     for (const vis of this.cars.values()) this.placeCar(vis, dt, cam);
+    if (sim.canopy && this.roof?.plan !== sim.canopy) this.buildRoof(sim);
     this.debrisFrame(sim.debris);
     this.shardFrame(sim.ds, dt);
     this.propsFrame(take);
@@ -387,6 +388,7 @@ export class GameView {
     const live = new Set<number>();
     for (const d of list) {
       live.add(d.id);
+      if (d.kind === 'canopy-piece') { this.roofPiece(d); continue; }
       const prop = this.props.get(d.ref) ?? this.captureProp(d.ref);
       if (prop) { this.moveProp(prop, d); continue; }
       let n = this.debris.get(d.id);
@@ -455,6 +457,82 @@ export class GameView {
       });
       if (alive === 0) { sh.view.dispose(); this.shards.splice(k, 1); }
     }
+  }
+  // ---- the broken roof of the station ----
+  /** The roof's panels are the engine's pre-fracture of the slab (sim.canopy, by seed). Each panel's mesh is the real canopy geometry cut to the panel's box (triangles clipped at the cut planes, the
+   *  outer faces open to everything outside), same materials, so a panel looks exactly like its part of the roof until it lets go. Built behind the splash (disabled), shown when the sim breaks the roof. */
+  private roof: { plan: unknown; parts: BABYLON.Mesh[][]; shown: boolean } | null = null;
+  private buildRoof(sim: { canopy: { pieces: { offset: V3; size: V3 }[]; centre: V3 } | null }) {
+    const plan = sim.canopy; if (!plan) return;
+    if (this.roof) for (const ms of this.roof.parts) for (const m of ms) m.dispose();
+    this.roof = { plan, parts: plan.pieces.map(() => []), shown: false };
+    const node = this.stationNodes.get('Canopy'); if (!node) return;
+    node.setEnabled(true);
+    const srcs = (node as BABYLON.Node).getChildMeshes(false) as BABYLON.Mesh[];
+    const lod0 = srcs.filter((m) => /LOD0$/.test(m.name)), use = lod0.length ? lod0 : srcs;
+    node.computeWorldMatrix(true);
+    const c = plan.centre;
+    // the cells: a piece's box, open outward where it meets the roof's outer faces
+    const lo = Infinity, hi = -Infinity; void lo; void hi;
+    const all = plan.pieces.map((q) => ({ lo: [c[0] + q.offset[0] - q.size[0] / 2, c[1] + q.offset[1] - q.size[1] / 2, c[2] + q.offset[2] - q.size[2] / 2], hi: [c[0] + q.offset[0] + q.size[0] / 2, c[1] + q.offset[1] + q.size[1] / 2, c[2] + q.offset[2] + q.size[2] / 2] }));
+    const bmin = [0, 1, 2].map((a) => Math.min(...all.map((x) => x.lo[a]!))), bmax = [0, 1, 2].map((a) => Math.max(...all.map((x) => x.hi[a]!)));
+    const cells = all.map((x) => ({ lo: x.lo.map((v, a) => (v <= bmin[a]! + 1e-3 ? -1e9 : v)), hi: x.hi.map((v, a) => (v >= bmax[a]! - 1e-3 ? 1e9 : v)) }));
+    for (const src of use) {
+      const idx = src.getIndices(), pos = src.getVerticesData(BABYLON.VertexBuffer.PositionKind), nor = src.getVerticesData(BABYLON.VertexBuffer.NormalKind);
+      if (!idx || !pos) continue;
+      const uv = src.getVerticesData(BABYLON.VertexBuffer.UVKind), uv2 = src.getVerticesData(BABYLON.VertexBuffer.UV2Kind), col = src.getVerticesData(BABYLON.VertexBuffer.ColorKind);
+      const W = src.getWorldMatrix();
+      const vert = (i: number): number[] => {
+        const p = BABYLON.Vector3.TransformCoordinates(new BABYLON.Vector3(pos[i * 3]!, pos[i * 3 + 1]!, pos[i * 3 + 2]!), W);
+        const n = nor ? BABYLON.Vector3.TransformNormal(new BABYLON.Vector3(nor[i * 3]!, nor[i * 3 + 1]!, nor[i * 3 + 2]!), W).normalize() : BABYLON.Vector3.Up();
+        const v = [p.x, p.y, p.z, n.x, n.y, n.z];
+        if (uv) v.push(uv[i * 2]!, uv[i * 2 + 1]!);
+        if (uv2) v.push(uv2[i * 2]!, uv2[i * 2 + 1]!);
+        if (col) v.push(col[i * 4]!, col[i * 4 + 1]!, col[i * 4 + 2]!, col[i * 4 + 3]!);
+        return v;
+      };
+      const mat = src.material as BABYLON.Material | null;
+      const subs = src.subMeshes && src.subMeshes.length ? src.subMeshes : [{ indexStart: 0, indexCount: idx.length, materialIndex: 0 } as BABYLON.SubMesh];
+      for (const sm of subs) {
+        const material = mat instanceof BABYLON.MultiMaterial ? mat.subMaterials[sm.materialIndex] ?? null : mat;
+        const tris: number[][][] = [];
+        for (let t = sm.indexStart; t < sm.indexStart + sm.indexCount; t += 3) tris.push([vert(idx[t]!), vert(idx[t + 1]!), vert(idx[t + 2]!)]);
+        cells.forEach((cell, pi) => {
+          const P: number[] = [], N: number[] = [], U: number[] = [], U2: number[] = [], C: number[] = [], I: number[] = [];
+          for (const tri of tris) {
+            let poly = tri;
+            let out = false;
+            for (let a = 0; a < 3 && !out; a++) if (Math.max(poly[0]![a]!, poly[1]![a]!, poly[2]![a]!) < cell.lo[a]! || Math.min(poly[0]![a]!, poly[1]![a]!, poly[2]![a]!) > cell.hi[a]!) out = true;
+            if (out) continue;
+            for (let a = 0; a < 3 && poly.length >= 3; a++) { poly = clipPoly(poly, a, cell.lo[a]!, true); if (poly.length >= 3) poly = clipPoly(poly, a, cell.hi[a]!, false); }
+            if (poly.length < 3) continue;
+            const base = P.length / 3, mc = [c[0] + plan.pieces[pi]!.offset[0], c[1] + plan.pieces[pi]!.offset[1], c[2] + plan.pieces[pi]!.offset[2]];
+            for (const v of poly) {
+              P.push(v[0]! - mc[0]!, v[1]! - mc[1]!, v[2]! - mc[2]!); N.push(v[3]!, v[4]!, v[5]!);
+              let o = 6; if (uv) { U.push(v[o]!, v[o + 1]!); o += 2; } if (uv2) { U2.push(v[o]!, v[o + 1]!); o += 2; } if (col) C.push(v[o]!, v[o + 1]!, v[o + 2]!, v[o + 3]!);
+            }
+            for (let k = 1; k + 1 < poly.length; k++) I.push(base, base + k, base + k + 1);
+          }
+          if (I.length === 0) return;
+          const m = new BABYLON.Mesh(`roof${pi}-${this.roof!.parts[pi]!.length}`, this.scene), vd = new BABYLON.VertexData();
+          vd.positions = P; vd.normals = N; vd.indices = I; if (uv) vd.uvs = U; if (uv2) vd.uvs2 = U2; if (col) vd.colors = C;
+          vd.applyToMesh(m);
+          m.material = material; m.isPickable = false; m.receiveShadows = src.receiveShadows; m.rotationQuaternion = BABYLON.Quaternion.Identity();
+          m.position.set(c[0] + plan.pieces[pi]!.offset[0], c[1] + plan.pieces[pi]!.offset[1], c[2] + plan.pieces[pi]!.offset[2]);
+          m.setEnabled(false); this.shadow?.addShadowCaster(m, false);
+          this.roof!.parts[pi]!.push(m);
+        });
+      }
+    }
+  }
+  private roofPiece(d: Debris) {
+    const r = this.roof; if (!r || d.piece === undefined) return;
+    if (!r.shown) {
+      r.shown = true;
+      for (const ms of r.parts) for (const m of ms) m.setEnabled(true);
+      this.stationNodes.get('Canopy')?.setEnabled(false);     // the whole roof is now its panels
+    }
+    for (const m of r.parts[d.piece] ?? []) { m.position.set(d.pos[0], d.pos[1], d.pos[2]); m.rotationQuaternion!.set(d.rot[0], d.rot[1], d.rot[2], d.rot[3]); }
   }
   private makeDebris(d: Debris): BABYLON.TransformNode | BABYLON.Mesh {
     const pivot = new BABYLON.TransformNode('debris' + d.id, this.scene); pivot.rotationQuaternion = BABYLON.Quaternion.Identity();
@@ -572,4 +650,16 @@ function lookQuat(forward: BABYLON.Vector3, up: BABYLON.Vector3): BABYLON.Quater
   const z = forward.normalize(), x = BABYLON.Vector3.Cross(up, z).normalize(), y = BABYLON.Vector3.Cross(z, x);
   const m = new BABYLON.Matrix(); BABYLON.Matrix.FromXYZAxesToRef(x, y, z, m);
   return BABYLON.Quaternion.FromRotationMatrix(m);
+}
+
+/** a polygon (vertices as arrays of floats, the first three the position) cut by the plane `axis = bound`, keeping the side above (or below) it; the other floats are interpolated */
+function clipPoly(poly: number[][], axis: number, bound: number, keepAbove: boolean): number[][] {
+  const out: number[][] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]!, b = poly[(i + 1) % poly.length]!;
+    const da = keepAbove ? a[axis]! - bound : bound - a[axis]!, db = keepAbove ? b[axis]! - bound : bound - b[axis]!;
+    if (da >= 0) out.push(a);
+    if ((da >= 0) !== (db >= 0)) { const t = da / (da - db); out.push(a.map((x, k) => x + (b[k]! - x) * t)); }
+  }
+  return out;
 }
