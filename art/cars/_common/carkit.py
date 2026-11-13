@@ -343,7 +343,10 @@ def planar_uv(ob, kind, axes='xy', flip_u=False, flip_v=False):
 
 
 def roll_edges(ob, width=0.0018, angle=40.0):
-    """Round every sharp edge left by the cuts (gaps, openings, arch lips, caps) to a rolled radius, as pressed sheet and moulded panels have."""
+    """Round every sharp edge left by the cuts (gaps, openings, arch lips, caps) to a rolled radius, as pressed sheet and moulded panels have.
+    The bevel leaves the large concave n-gons (the lofted body's end caps) folded over themselves, with a wrong normal: the game culled them (the sedan's tail panel between
+    the lamps was gone). They are cut into triangles after the bevel: each triangle keeps the loop's winding, so it faces out (ear clipping keeps a folded outline whole;
+    no recalculation of the normals: on the wagon it turned whole fenders inward)."""
     md = ob.modifiers.new('roll', 'BEVEL')
     md.width = width
     md.segments = 3
@@ -353,6 +356,13 @@ def roll_edges(ob, width=0.0018, angle=40.0):
     md.miter_outer = 'MITER_ARC'
     with bpy.context.temp_override(object=ob, active_object=ob, selected_objects=[ob], selected_editable_objects=[ob]):
         bpy.ops.object.modifier_apply(modifier=md.name)
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    ng = [f for f in bm.faces if len(f.verts) > 4]
+    if ng:
+        bmesh.ops.triangulate(bm, faces=ng, quad_method='BEAUTY', ngon_method='EAR_CLIP')
+        bm.to_mesh(ob.data)
+    bm.free()
 
 
 def round_lamp(m, c, ax, r, depth, lens_kind, body_kind='chrome', rings=8, n=40):

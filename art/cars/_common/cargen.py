@@ -196,6 +196,24 @@ def drop_origin_junk(ob):
     bm.free()
 
 
+def drop_low_junk(ob):
+    """The exact solver also leaves stray vertices under the floor line (black sliver spikes hanging under the car, seen from the front and the rear): a panel vertex below the
+    body's bottom line at its x, or out past the body's half width, is junk; it goes with its sliver faces."""
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    mw = ob.matrix_world
+    bad = []
+    for v in bm.verts:
+        p = mw @ v.co
+        if p.z < G.bottom_z(min(max(p.x, G.X_TAIL), G.X_NOSE)) - 0.02 or abs(p.y) > G.W + 0.03:
+            bad.append(v)
+    if bad:
+        log('junk under the floor', ob.name, len(bad))
+        bmesh.ops.delete(bm, geom=bad, context='VERTS')
+        bm.to_mesh(ob.data)
+    bm.free()
+
+
 def bvh_of(obs):
     bm = bmesh.new()
     for ob in obs:
@@ -581,6 +599,18 @@ def cabin_half(x):
     return chaikin(pts, 1)
 
 
+def outward(ob):
+    """A closed loft must face out before the booleans. The wagon's greenhouse came out inside out (its first ring at the tailgate folds over: the top under the belt, and the
+    normals' recalculation took that side as the outside); the union then kept the deck under the roof and turned the roof's skin inward: no roof in the game."""
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    if bm.calc_volume(signed=True) < 0:
+        log('turned outward', ob.name)
+        bmesh.ops.reverse_faces(bm, faces=bm.faces)
+        bm.to_mesh(ob.data)
+    bm.free()
+
+
 def build_body(root):
     m = Mesh()
     xs = stations(G.X_TAIL, G.X_NOSE, 0.040, fine=0.010)
@@ -590,6 +620,8 @@ def build_body(root):
     xg = stations(G.X_GH0, G.X_COWL + 0.03, 0.030, dense=0.0)
     g.loft([ring3(x, gh_half(x)) for x in xg], 'paint', caps=True)
     gh = g.finish('Greenhouse', root)
+    for ob in (body, gh):
+        outward(ob)
     log('body lofted', len(body.data.polygons), 'greenhouse', len(gh.data.polygons))
     boolean(body, [gh], 'UNION')
     log('union', len(body.data.polygons))
@@ -1586,6 +1618,8 @@ def build_car():
     for ob in list(doors.values()) + list(panels.values()):
         CK.roll_edges(ob)
     drop_origin_junk(body)
+    for ob in [body] + list(doors.values()) + list(panels.values()):
+        drop_low_junk(ob)
     smooth(body, 40)
     owners = dict(doors)
     owners.update(panels)
