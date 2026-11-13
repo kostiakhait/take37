@@ -127,7 +127,7 @@ async function main() {
     }
     if (take.phase === 'verdict' && !verdictShown) { verdictShown = true; view.setView({ mode: 'set', set: view.bestSetCamera(take) }); }
     const car = take.player, f = qRot(car.veh.rot, [1, 0, 0]), v = car.veh.vel[0] * f[0] + car.veh.vel[2] * f[2];
-    view.frame(take, dt, { yaw, pitch, back: input.down('lookback') });
+    view.frame(take, dt, { yaw, pitch, back: false });
     shopView.frame(camera.globalPosition);
     audio.update(v, car.ctl.throttle, inp.horn, sirenOn, take.t);
     hud.update(take, v, paused, (a) => input.prompt(a));

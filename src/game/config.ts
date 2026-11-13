@@ -39,20 +39,20 @@ export const TRAFFIC_KINDS: KindId[] = ['sedan', 'pickup', 'minivan', 'hatchback
 /** the actions of the playable part, with a binding per device (the Controls table of PLAN.md section 5) */
 export const ACTIONS = {
   steer: { kind: 'axis2' }, look: { kind: 'axis2' },
-  gas: { kind: 'button' }, brake: { kind: 'button' }, handbrake: { kind: 'button' }, jump: { kind: 'button' }, lookback: { kind: 'button' },
+  gas: { kind: 'button' }, brake: { kind: 'button' }, handbrake: { kind: 'button' }, jump: { kind: 'button' },
   horn: { kind: 'button' }, siren: { kind: 'button' }, cut: { kind: 'button' }, pause: { kind: 'button' }, accept: { kind: 'button' },
 } as const;
 export const BINDINGS = {
   keyboard: {
     gas: [{ key: 'KeyW', label: 'W' }, { key: 'ArrowUp' }], brake: [{ key: 'KeyS', label: 'S' }, { key: 'ArrowDown' }],
     steer: [{ axisKeys: ['KeyA', 'KeyD', 'KeyW', 'KeyS'] as [string, string, string, string] }, { axisKeys: ['ArrowLeft', 'ArrowRight', 'KeyW', 'KeyS'] as [string, string, string, string] }],
-    handbrake: [{ key: 'Space', label: 'Space' }], jump: [{ key: 'KeyE', label: 'E' }], lookback: [{ key: 'KeyC', label: 'C' }],
+    handbrake: [{ key: 'Space', label: 'Space' }], jump: [{ key: 'KeyE', label: 'E' }],
     look: [{ mouseLook: true as const, sensitivity: 1 }], horn: [{ key: 'KeyH', label: 'H' }], siren: [{ key: 'KeyQ', label: 'Q' }],
     cut: [{ key: 'KeyR', label: 'R' }], pause: [{ key: 'Escape', label: 'Esc' }], accept: [{ key: 'Enter', label: 'Enter' }],
   },
   gamepad: {
     gas: [{ pad: 7, label: 'RT' }], brake: [{ pad: 6, label: 'LT' }], steer: [{ padAxes: [0, 1] as [number, number], deadzone: 0.12 }], look: [{ padAxes: [2, 3] as [number, number], deadzone: 0.15 }],
-    handbrake: [{ pad: 0, label: 'A' }], jump: [{ pad: 2, label: 'X' }], lookback: [{ pad: 3, label: 'Y' }], horn: [{ pad: 10, label: 'LS' }], siren: [{ pad: 4, label: 'LB' }],
+    handbrake: [{ pad: 0, label: 'A' }], jump: [{ pad: 2, label: 'X' }], horn: [{ pad: 10, label: 'LS' }], siren: [{ pad: 4, label: 'LB' }],
     cut: [{ pad: 8, label: 'Back' }], pause: [{ pad: 9, label: 'Start' }], accept: [{ pad: 0, label: 'A' }],
   },
 };

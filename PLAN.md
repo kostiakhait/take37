@@ -62,7 +62,6 @@ Cameras: the set cameras (Edward's among them) score a stunt only when it is in 
 | Steer | A / D | left stick |
 | Handbrake | Space | A |
 | Jump out of the car | E | X |
-| Look back | C (hold) | Y |
 | Free look | mouse | right stick |
 | Horn | H | left stick press |
 | Lights and siren | Q | LB |

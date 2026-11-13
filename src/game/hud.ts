@@ -30,7 +30,7 @@ export class Hud {
     const call = this.el['h-call']!;
     const brief = ph === 'brief';
     this.show('h-hint', brief || (ph === 'play' && take.t < 14));
-    this.set('h-hint', brief ? `Scene 1. Edward has his camera on the street. Vincent's Corvette is ahead. Stay on him and give the director a spectacle.\nGas ${prompt('gas')}   Brake ${prompt('brake')}   Steer ${prompt('steer')}   Handbrake ${prompt('handbrake')}   Siren ${prompt('siren')}   Horn ${prompt('horn')}   Look back ${prompt('lookback')}   Jump out ${prompt('jump')}   Call "Cut" ${prompt('cut')}` : `Gas ${prompt('gas')}  Brake ${prompt('brake')}  Handbrake ${prompt('handbrake')}  Siren ${prompt('siren')}  Look back ${prompt('lookback')}  Jump out ${prompt('jump')}  Cut ${prompt('cut')}`);
+    this.set('h-hint', brief ? `Scene 1. Edward has his camera on the street. Vincent's Corvette is ahead. Stay on him and give the director a spectacle.\nGas ${prompt('gas')}   Brake ${prompt('brake')}   Steer ${prompt('steer')}   Handbrake ${prompt('handbrake')}   Siren ${prompt('siren')}   Horn ${prompt('horn')}   Jump out ${prompt('jump')}   Call "Cut" ${prompt('cut')}` : `Gas ${prompt('gas')}  Brake ${prompt('brake')}  Handbrake ${prompt('handbrake')}  Siren ${prompt('siren')}  Jump out ${prompt('jump')}  Cut ${prompt('cut')}`);
     let text = '', cls = '';
     if (ph === 'clapper') { text = take.phaseT < 1.5 ? 'Scene 1, take ' + take.takeNo : 'Action!'; cls = 'slate'; }
     else if (ph === 'verdict' && take.outcome) { text = take.outcome.verdict === 'wrap' ? "That's a wrap!" : 'Cut!'; cls = take.outcome.verdict; }
