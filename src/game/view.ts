@@ -10,6 +10,7 @@ import type { DebrisPiece } from '@ferret/destruction/debris';
 import { CAR_KINDS, SET_CAMERAS, type KindId, type SetCamera } from './config';
 import type { Take } from './take';
 import { POLICE_CAB } from './carspec';
+import { assignPaint, paintLook, whitePaint, paintOf, preparePaintInstances, paintInstance, PAINTED } from './paint';
 import type { Car, Debris, SimEvent, Prop } from './sim';
 import type { NodeInfo } from '@ferret/destruction/autoparts';
 import { BabylonBackend, Perspective, PerspectiveService, type PerspectiveLevel } from '@ferret/perspective';
@@ -101,6 +102,7 @@ export class GameView {
       n.rotationQuaternion = wheels.get(name)!.restN.clone(); if (mesh) mesh.rotationQuaternion = wheels.get(name)!.restM.clone();
     }
     for (const mesh of root.getChildMeshes()) { mesh.isPickable = false; mesh.receiveShadows = true; mesh.alwaysSelectAsActiveMesh = false; this.shadow?.addShadowCaster(mesh, false); }
+    paintLook(root, this.paints.get(parent.name.replace(/^car:/, '')));   // the car's own body colour (paint.ts); the parent is the car's root 'car:<id>'
     return { root, nodes, wheels };
   }
 
@@ -125,6 +127,8 @@ export class GameView {
     this.persp = { service, backend: service.backend as BabylonBackend, world };
   }
   private reduced = new Map<KindId, { meshes: BABYLON.Mesh[]; radius: number } | null>();
+  /** the palette index of each car's body colour in the current take (paint.ts) */
+  private paints = new Map<string, number>();
   /** the kind's reduced model (its *_lod1, cut to a quarter of the triangles by the build) as merged meshes in the car's frame: one per set of vertex attributes, a material per part kept */
   private reducedOf(kind: KindId): { meshes: BABYLON.Mesh[]; radius: number } | null {
     if (this.reduced.has(kind)) return this.reduced.get(kind)!;
@@ -137,14 +141,16 @@ export class GameView {
     for (const m of root.getChildMeshes(false)) {
       if (!(m instanceof BABYLON.Mesh) || !m.material || m.getTotalVertices() === 0) continue;
       m.makeGeometryUnique(); m.setParent(null); m.bakeCurrentTransformIntoVertices();
-      const sig = (m.getVerticesDataKinds() ?? []).slice().sort().join(',');
+      const sig = (PAINTED.includes(kind) && paintOf(m.material) ? 'paint|' : '') + (m.getVerticesDataKinds() ?? []).slice().sort().join(',');   // the body paint merged apart: it takes its colour per instance
       (groups.get(sig) ?? groups.set(sig, []).get(sig)!).push(m);
     }
     root.dispose(false, false);
     const meshes: BABYLON.Mesh[] = []; let radius = 0;
-    for (list of groups.values()) {
+    for (const [sig, list] of groups) {
       let out: BABYLON.Mesh[] = list;
-      try { const merged = BABYLON.Mesh.MergeMeshes(list, true, true, undefined, false, true); if (merged) out = [merged]; } catch { out = list; }
+      const paint = sig.startsWith('paint|') ? whitePaint(list[0]!.material!) : null;
+      try { const merged = BABYLON.Mesh.MergeMeshes(list, true, true, undefined, false, !paint); if (merged) out = [merged]; } catch { out = list; }
+      if (paint) for (const m of out) { m.material = paint; preparePaintInstances(m); }
       for (const m of out) {
         m.name = `reduced:${kind}`; m.isPickable = false; m.receiveShadows = true;
         m.refreshBoundingInfo(); const bs = m.getBoundingInfo().boundingSphere; radius = Math.max(radius, bs.radius + bs.center.length());
@@ -156,7 +162,7 @@ export class GameView {
   }
   private ladder(vis: CarVis) {
     const P = this.persp!, red = this.reducedOf(vis.car.kind)!, pack = this.packs.get(vis.car.kind) ?? {};
-    vis.reduced = red.meshes.map((m) => { const i = m.createInstance(`car-reduced:${vis.car.id}`); i.parent = vis.root; i.position.setAll(0); i.isPickable = false; this.shadow?.addShadowCaster(i, false); return i; });
+    vis.reduced = red.meshes.map((m) => { const i = m.createInstance(`car-reduced:${vis.car.id}`); paintInstance(i, this.paints.get(vis.car.id)); i.parent = vis.root; i.position.setAll(0); i.isPickable = false; this.shadow?.addShadowCaster(i, false); return i; });
     vis.root.computeWorldMatrix(true);
     const e = P.world.spawn('car-' + vis.car.id, { node: vis.root, tags: ['car'] });
     if (vis.full) vis.fullRep = P.backend.represent(e, 'full', vis.full.root);
@@ -224,6 +230,7 @@ export class GameView {
     this.shards = []; this.unlisten?.();
     const ds = take.scene.sim.ds;
     this.unlisten = ds.listen((name, p) => { if (name === 'destruction:hit') this.addShards(ds, p); });
+    this.paints = assignPaint(take.scene.sim.cars, take.scene.seed);
     for (const car of take.scene.sim.cars) this.cars.set(car.id, this.makeCar(car));
     this.lookYaw = this.lookPitch = 0; this.camInit = false;
     if (!this.culled) { this.culled = true; this.cullSmall(); }
