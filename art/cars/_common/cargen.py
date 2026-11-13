@@ -599,6 +599,37 @@ def cabin_half(x):
     return chaikin(pts, 1)
 
 
+CAP_CUTS = 0
+
+
+def cap_triangles(ob):
+    """The lofts' end caps are large concave n-gons; the cuts and the edge bevel later folded them over themselves (the wagon's nose beside the lamps, the sedan's tail
+    panel). They are made triangles (ear clipping) before any boolean."""
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    ng = [f for f in bm.faces if len(f.verts) > 4]
+    if ng:
+        # a fan from the centre where the section is star-shaped (ear clipping made long slivers that the exact boolean dropped: the wedge-shaped holes in the sedan's tail and
+        # beside the wagon's grille); ear clipping where it is not (the fan folds over and the exact solver then loses a door)
+        def star(f):
+            c = f.calc_center_median()
+            n = f.normal
+            vs = [v.co for v in f.verts]
+            return all(((b - c).cross(a - c)).dot(n) <= 0 for a, b in zip(vs, vs[1:] + vs[:1]))
+        fan = [f for f in ng if star(f)]
+        rest = [f for f in ng if f not in fan]
+        if fan:
+            res = bmesh.ops.poke(bm, faces=fan, offset=0.0, use_relative_offset=False)
+            if CAP_CUTS:       # optional: cut the long radial triangles into rings (tried on the wagon's tail: no gain, off)
+                edges = list({e for t in res['faces'] for e in t.edges})
+                bmesh.ops.subdivide_edges(bm, edges=edges, cuts=CAP_CUTS, use_grid_fill=True)
+        if rest:
+            bmesh.ops.triangulate(bm, faces=rest, quad_method='BEAUTY', ngon_method='EAR_CLIP')
+        log('cap fans', len(fan), 'ear clipped', len(rest))
+        bm.to_mesh(ob.data)
+    bm.free()
+
+
 def outward(ob):
     """A closed loft must face out before the booleans. The wagon's greenhouse came out inside out (its first ring at the tailgate folds over: the top under the belt, and the
     normals' recalculation took that side as the outside); the union then kept the deck under the roof and turned the roof's skin inward: no roof in the game."""
@@ -608,6 +639,41 @@ def outward(ob):
         log('turned outward', ob.name)
         bmesh.ops.reverse_faces(bm, faces=bm.faces)
         bm.to_mesh(ob.data)
+    bm.free()
+
+
+def fix_winding(ob, skin):
+    """Painted faces on the outer skin that look into the car instead of out of it, against the body as lofted (before any cut, its normals face out): the
+    wagon's tailgate skin and parts of its tail looked inward, and the game culled them. A face within 4 mm of the lofted skin is turned when its normal opposes the skin's (the skin's own normal is checked against the
+    direction out of the car)."""
+    me = ob.data
+    names = [mm.name for mm in me.materials]
+    pi = names.index('M_paint') if 'M_paint' in names else -1
+    if pi < 0:
+        return
+    bpy.context.view_layer.update()
+    mw = ob.matrix_world
+    rot = mw.to_3x3().normalized()
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.normal_update()
+    bad = []
+    for f in bm.faces:
+        if f.material_index != pi or f.calc_area() < 1e-8:
+            continue
+        c = mw @ f.calc_center_median()
+        loc, nrm, _, dist = skin.find_nearest(c, 0.004)
+        if loc is None:
+            continue
+        out = c - V3((min(max(c.x, G.X_TAIL + 0.6), G.X_NOSE - 0.6), 0.0, 0.7))
+        if nrm.dot(out) < -0.3 * out.length:      # the skin itself folded (the wagon's greenhouse end): out of the car is the other way
+            nrm = -nrm
+        if (rot @ f.normal).dot(nrm) < -0.5:
+            bad.append(f)
+    if bad:
+        log('faces turned out', ob.name, len(bad))
+        bmesh.ops.reverse_faces(bm, faces=bad)
+        bm.to_mesh(me)
     bm.free()
 
 
@@ -622,6 +688,7 @@ def build_body(root):
     gh = g.finish('Greenhouse', root)
     for ob in (body, gh):
         outward(ob)
+        cap_triangles(ob)
     log('body lofted', len(body.data.polygons), 'greenhouse', len(gh.data.polygons))
     boolean(body, [gh], 'UNION')
     log('union', len(body.data.polygons))
@@ -724,7 +791,7 @@ def dup_obj(ob, name):
 
 def intersect_part(body, cutter, name):
     """body AND cutter, as a new object; retried with the exact solver's self-test and a nudge when it returns nothing (found with the right front door of the large sedan)."""
-    for nudge, self_test in ((0.0, False), (0.0, True), (0.00023, True)):
+    for nudge, self_test in ((0.0, False), (0.0, True), (0.00023, True), (0.0007, True), (0.0013, True), (-0.0009, True)):
         dup = dup_obj(body, name)
         c2 = bpy.data.objects.new(cutter.name + '_b', cutter.data.copy())
         bpy.context.scene.collection.objects.link(c2)
@@ -1117,10 +1184,23 @@ def bumper_mesh(front):
         rings.append([V3((x, y, 0)) + n * dx + V3((0, 0, z)) for dx, z in prof])
     m.loft(rings, kind, caps=True)
     if B.get('rub', True):
-        strip = []
+        # the rub strip stops either side of a plate carried on the bumper's face (it ran across the plate and hid its number)
+        pl = G.PLATE_F if front else G.PLATE_R
+        on_face = pl is not None and abs(pl[0] - xf) < 0.05 and pl[1] - 0.09 < zt - 0.38 * h and pl[1] + 0.09 > zt - 0.62 * h
+        gap = 0.175 if on_face else -1.0
+        runs, cur = [], []
         for x, y, n in path[4:-4]:
-            strip.append([V3((x, y, 0)) + n * dx + V3((0, 0, z)) for dx, z in ((0.004, zt - 0.40 * h), (0.016, zt - 0.38 * h), (0.016, zt - 0.62 * h), (0.004, zt - 0.60 * h))])
-        m.loft(strip, 'rubber', caps=True)
+            if abs(y) < gap:
+                if cur:
+                    runs.append(cur)
+                cur = []
+                continue
+            cur.append([V3((x, y, 0)) + n * dx + V3((0, 0, z)) for dx, z in ((0.004, zt - 0.40 * h), (0.016, zt - 0.38 * h), (0.016, zt - 0.62 * h), (0.004, zt - 0.60 * h))])
+        if cur:
+            runs.append(cur)
+        for strip in runs:
+            if len(strip) > 1:
+                m.loft(strip, 'rubber', caps=True)
     for s in (1, -1):
         m.rbox(V3((xf - sx * 0.030, s * B.get('guard_y', 0.58), zb + 0.5 * h - 0.02)), (0.08, 0.08, h + 0.03), 0.02, 'rubber')
     return m
@@ -1384,7 +1464,25 @@ def wheel_mesh(s, front):
 def build_wheels(root):
     for nm, x, y in (('FL', G.WHEELBASE / 2, G.TRACK_F / 2), ('FR', G.WHEELBASE / 2, -G.TRACK_F / 2), ('RL', -G.WHEELBASE / 2, G.TRACK_R / 2), ('RR', -G.WHEELBASE / 2, -G.TRACK_R / 2)):
         e = empty(f'Wheel_{nm}', V3((x, y, G.ZC)), root)
-        wheel_mesh(1 if y > 0 else -1, nm[0] == 'F').finish(f'Wheel_{nm}_mesh', e, sharp=40)
+        ob = wheel_mesh(1 if y > 0 else -1, nm[0] == 'F').finish(f'Wheel_{nm}_mesh', e, sharp=40)
+        face_out(ob, 1 if y > 0 else -1)
+
+
+def face_out(ob, s):
+    """The wheel's face is an open sheet: the normals' recalculation may turn it inward, and the game then culls it (the small hatchback's wheels showed through
+    their faces round the hub cap). Its faces are turned to look out of the car's side."""
+    me = ob.data
+    names = [mm.name for mm in me.materials]
+    wi = names.index('M_wheel') if 'M_wheel' in names else -1
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bad = [f for f in bm.faces if f.material_index == wi and abs(f.normal.y) > 0.5 and f.normal.y * s < 0
+           and math.hypot(f.calc_center_median().x, f.calc_center_median().z) < G.R_RIM - 0.003]
+    if bad:
+        log('wheel face turned out', ob.name, len(bad))
+        bmesh.ops.reverse_faces(bm, faces=bad)
+        bm.to_mesh(me)
+    bm.free()
 
 
 # ---- the interior -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -1620,6 +1718,10 @@ def build_car():
     drop_origin_junk(body)
     for ob in [body] + list(doors.values()) + list(panels.values()):
         drop_low_junk(ob)
+    for ob in list(doors.values()) + list(panels.values()):
+        outward(ob)
+    for ob in [body] + list(doors.values()) + list(panels.values()):
+        fix_winding(ob, bvh)
     smooth(body, 40)
     owners = dict(doors)
     owners.update(panels)
