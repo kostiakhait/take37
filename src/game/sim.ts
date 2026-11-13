@@ -266,6 +266,8 @@ export class Sim {
         const b = cs[j]!;
         if (a.veh.sleeping && b.veh.sleeping) continue;
         if (Math.abs(a.veh.pos[0] - b.veh.pos[0]) > 12 || Math.abs(a.veh.pos[2] - b.veh.pos[2]) > 12) continue;
+        // a car whose state is not a number (a numerical failure) must not meet the others: the contact would make every car it touches NaN too, and the whole street of cars vanished at once
+        if (!finiteState(a) || !finiteState(b)) continue;
         const wasA = len(a.veh.vel), wasB = len(b.veh.vel);
         const r = this.collidePair(a, b);
         if (r && r.speed > 1.2) {
@@ -447,6 +449,13 @@ export class Sim {
       }
     }
   }
+}
+
+/** every number of a car's body state is finite */
+function finiteState(c: Car): boolean {
+  const v = c.veh;
+  for (const a of [v.pos, v.vel, v.rot, v.angVel]) for (const x of a) if (!Number.isFinite(x)) return false;
+  return true;
 }
 
 function mulQ(a: Quat, b: Quat): Quat {
