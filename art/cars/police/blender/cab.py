@@ -6,7 +6,7 @@ edging across the whole width, a square ribbed vent left of the wheel, a wide ri
 centre console, a long wooden panel and a vent before the passenger, black plastic below; a large thin-rimmed four-spoke wheel with a big rectangular pad; a grey velour bench.
 
 Nodes added under the car root (existing nodes keep their names):
-  Interior            seats, belts, pedals, visors, dome lamp, spotlight handle
+  Interior            seats, belts, pedals, visors, dome lamp
   Dash                instrument panel, cluster, vents, radio, climate, glove box, column shroud, selector lever, stalk
   SteeringWheel       rim, four spokes, the pad; origin at the hub on the column axis, turns about AXIS
   Equipment           the police radio rack, siren console, microphone, scanner
@@ -183,9 +183,6 @@ def build_interior(B, CK, Mesh, root):
     # the dome lamp
     m.rbox(V3((-0.55, 0, 1.357)), (0.12, 0.17, 0.014), 0.006, 'interior')
     m.rbox(V3((-0.55, 0, 1.349)), (0.10, 0.15, 0.006), 0.003, 'lamp_lens')
-    # the spotlight's handle inside the driver's A-pillar (the lamp is outside, Trim)
-    m.cyl(V3((0.30, 0.74, 1.13)), V3((0.20, 0.70, 1.11)), 0.008, 'brightwork', seg=8)
-    m.rbox(V3((0.17, 0.69, 1.105)), (0.05, 0.035, 0.03), 0.01, 'black')
     ob = m.finish('Interior', root, sharp=40)
     B.metres_uv(ob, ('seatcloth',))
     return ob

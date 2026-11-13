@@ -51,16 +51,16 @@ MATS = {
     'gap': ((6, 6, 6), 0.0, 0.9, {}),
     'well': ((16, 16, 16), 0.0, 0.95, {}),
     'seal': ((12, 12, 12), 0.0, 0.6, {}),
-    'interior': ((60, 60, 64), 0.0, 0.45, {'name': 'M_vinyl', 'emit': (0.10, 0.10, 0.105)}),         # black vinyl of the pillars and door panels (the blue interior of the 1987 patrol car in the Barn Finds photograph)
-    'carpet': ((90, 98, 130), 0.0, 1.0, {'lib': 'rug', 'tile': 0.6, 'tint': (0.50, 0.50, 0.51), 'name': 'M_floor', 'emit': (0.07, 0.07, 0.072)}),     # grey carpet
-    'headliner': ((170, 176, 195), 0.0, 0.95, {'lib': 'gray-fabric1', 'tile': 0.4, 'tint': (0.78, 0.78, 0.80), 'name': 'M_roofcloth', 'emit': (0.20, 0.20, 0.205)}),
-    'seatcloth': ((120, 128, 160), 0.0, 0.92, {'lib': 'cloth-grey', 'tile': 0.18, 'tint': (0.58, 0.58, 0.60), 'name': 'M_cloth', 'emit': (0.12, 0.12, 0.125)}),    # grey velour
-    'dash': ((44, 44, 47), 0.0, 0.4, {'name': 'M_panel', 'emit': (0.07, 0.07, 0.075)}),
+    'interior': ((34, 34, 37), 0.0, 0.42, {'name': 'M_vinyl'}),         # black vinyl of the pillars and door panels (the blue interior of the 1987 patrol car in the Barn Finds photograph)
+    'carpet': ((90, 98, 130), 0.0, 1.0, {'lib': 'rug', 'tile': 0.6, 'tint': (0.50, 0.50, 0.51), 'name': 'M_floor'}),     # grey carpet
+    'headliner': ((200, 204, 214), 0.0, 1.0, {'lib': 'gray-fabric1', 'tile': 0.4, 'tint': (1.0, 1.0, 1.0), 'name': 'M_roofcloth'}),
+    'seatcloth': ((120, 128, 160), 0.0, 1.0, {'lib': 'cloth-grey', 'tile': 0.18, 'tint': (0.58, 0.58, 0.60), 'name': 'M_cloth'}),    # grey velour
+    'dash': ((30, 30, 33), 0.0, 0.38, {'name': 'M_panel'}),
     'bezel': ((120, 122, 128), 0.8, 0.32, {}),
-    'pad': ((18, 18, 20), 0.0, 0.5, {'name': 'M_pad', 'emit': (0.035, 0.035, 0.04)}),          # the soft black top of the dash
+    'pad': ((20, 20, 22), 0.0, 0.5, {'name': 'M_pad'}),          # the soft black top of the dash
     'wood': ((110, 55, 28), 0.0, 0.35, {'name': 'M_woodgrain', 'tex': 'walnut_color.png', 'emit_tex': 0.30}),   # walnut-grain trim (gauges.py draws it)
     'brightwork': ((205, 207, 212), 0.6, 0.2, {'name': 'M_brightwork', 'emit': (0.13, 0.13, 0.14)}),   # the cab's bright trim (no environment map in the cab)
-    'vent': ((28, 30, 36), 0.0, 0.6, {'name': 'M_ventgrille', 'emit': (0.02, 0.022, 0.03)}),
+    'vent': ((28, 30, 36), 0.0, 0.6, {'name': 'M_ventgrille'}),
     'glass_cluster': ((12, 13, 15), 0.0, 0.05, {'name': 'M_glass_cluster', 'alpha': 0.25}),
     'amber_lit': ((255, 150, 20), 0.0, 0.3, {}),
     'blue_lit': ((40, 90, 230), 0.0, 0.3, {}),
