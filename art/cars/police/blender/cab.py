@@ -17,6 +17,8 @@ Blender frame: x forward, y left (the driver, +y), z up; origin on the ground at
 """
 import math
 
+import numpy as np
+
 import bmesh
 from mathutils import Vector
 
@@ -124,10 +126,14 @@ def fix_doors(B):
             for f in bm.faces:       # whatever of the library mirror (head, stalk, foot) is still left outside the door
                 if f not in bad and all(0.55 < (mw @ v.co).x < 0.82 and 0.925 < abs((mw @ v.co).y) < 1.16 and 0.84 < (mw @ v.co).z < 1.06 for v in f.verts):
                     bad.add(f)
+            nm0 = len(bad)
+            for f in bm.faces:       # the chrome drip moulding along the A-pillar and the windscreen header: seen from the seat through the glass it is a dark arc floating over the pillar
+                if f not in bad and all((mw @ v.co).x > 0.28 and (mw @ v.co).z > 0.95 and 0.3 < abs((mw @ v.co).y) < 0.97 for v in f.verts):
+                    bad.add(f)
             bmesh.ops.delete(bm, geom=list(bad), context='FACES')
             bm.to_mesh(tr.data)
             bm.free()
-            B.log('door', k, 'library mirror faces removed:', len(bad))
+            B.log('door', k, 'library mirror faces removed:', nm0, 'moulding faces removed:', len(bad) - nm0)
 
     # the library's A-pillar spotlights (a black ball on a handle reaching into the cab, in the shared Trim object) are taken off: they read as a ball on a stick inside the cab
     tr = bpy.data.objects.get('Trim')
@@ -160,6 +166,7 @@ def build_interior(B, CK, Mesh, root):
         m.cyl(V3((0.20, s * 0.14, 0.40)), V3((0.20, s * 0.56, 0.40)), 0.007, 'brightwork', seg=8)
     m.rbox(V3((-0.02, 0, 0.40)), (0.48, 1.36, 0.06), 0.01, 'black')
     m.rbox(V3((-0.22, 0, 0.66)), (0.46, 0.17, 0.085), 0.03, 'seatcloth')
+    m.rbox(V3((-0.22, 0, 0.565)), (0.40, 0.15, 0.10), 0.01, 'seatcloth')     # the folded centre armrest rests on the bench: a filler under it (the check for floating parts found a gap of 6 cm)
     # the rear bench
     ex, ey, ez = axes(-4)
     CK.cushion(m, V3((-1.18, 0, 0.48)), ex, ey, ez, 0.50, 1.24, 0.13, pleats=12, kind='seatcloth', piping='seatcloth')
@@ -374,20 +381,70 @@ def build_mirrors(B, Mesh, root):
         door = bpy.data.objects.get('Door_F' + k)
         if door is None:
             continue
-        base = V3((0.70, s * 0.925, 0.955))
-        head = V3((0.66, s * 1.04, 0.985))          # low and out on the door: clear of the driver's spotlight lamp above it on the A-pillar
-        n = _aim(head, V3((-12.0, s * 1.6, 1.0)))
-        ex, ey, ez = frame_of(n)
-        m = Mesh()
-        tri = [base + V3((0.06, 0, -0.01)), base + V3((-0.07, 0, -0.01)), base + V3((0.03, 0, 0.07))]
+        # the base: a triangular gusset plate laid on the door's outer skin at the foot of the A pillar (its back vertices sit on the skin: found by a ray from outside), 12 mm thick,
+        # three screws; from its face a short bracket rises and goes out to a hinge knuckle on the back of the housing; the housing is a plastic-framed chrome shell about 15 x 10 cm
+        bpy.context.view_layer.update()
+        dg = bpy.context.evaluated_depsgraph_get()
         out = V3((0, s, 0))
-        vs0 = [m.bm.verts.new(p) for p in tri]
-        vs1 = [m.bm.verts.new(p + out * 0.02) for p in tri]
-        m.face(vs1, 'brightwork')
-        m.face(list(reversed(vs0)), 'brightwork')
-        for i in range(3):
-            m.face([vs0[i], vs0[(i + 1) % 3], vs1[(i + 1) % 3], vs1[i]], 'brightwork')
-        m.cyl(base + out * 0.02 + V3((0.0, 0, 0.02)), head - ez * 0.03, 0.011, 'brightwork', seg=10)
+
+        def skin(x, z):
+            r = bpy.context.scene.ray_cast(dg, V3((x, s * 1.4, z)), V3((0, -s, 0)))
+            if not r[0]:
+                return V3((x, s * 0.97, z)), out
+            nn = V3(r[2])
+            return V3(r[1]), (nn if nn.dot(out) > 0 else -nn)
+        m = Mesh()
+        corners = [(0.79, 0.815), (0.60, 0.815), (0.74, 0.903)]
+        NG = 6                                    # the plate is a fan of small triangles: every vertex of its back is on the (curved) skin
+        grid = {}
+        for i in range(NG + 1):
+            for j in range(NG + 1 - i):
+                w = (i / NG, j / NG, (NG - i - j) / NG)
+                x = sum(w[q] * corners[q][0] for q in range(3))
+                z = sum(w[q] * corners[q][1] for q in range(3))
+                p0, n0 = skin(x, z)
+                grid[(i, j)] = (m.bm.verts.new(p0), m.bm.verts.new(p0 + n0 * 0.012), p0 + n0 * 0.012, n0)
+        smalls = []
+        for i in range(NG):
+            for j in range(NG - i):
+                smalls.append(((i, j), (i + 1, j), (i, j + 1)))
+                if i + j < NG - 1:
+                    smalls.append(((i + 1, j), (i + 1, j + 1), (i, j + 1)))
+        ecount = {}
+        for t3 in smalls:
+            for q in range(3):
+                e = tuple(sorted((t3[q], t3[(q + 1) % 3])))
+                ecount[e] = ecount.get(e, 0) + 1
+        cen = sum((grid[k0][2] for k0 in grid), V3((0, 0, 0))) / len(grid)
+        for t3 in smalls:
+            fv = [grid[k0][1] for k0 in t3]
+            bv = [grid[k0][0] for k0 in t3]
+            nrm = (fv[1].co - fv[0].co).cross(fv[2].co - fv[0].co)
+            if nrm.dot(out) < 0:
+                fv, bv = list(reversed(fv)), list(reversed(bv))
+            m.face(fv, 'black')
+            m.face(list(reversed(bv)), 'black')
+        for t3 in smalls:
+            for q in range(3):
+                k0, k1 = t3[q], t3[(q + 1) % 3]
+                if ecount[tuple(sorted((k0, k1)))] != 1:
+                    continue
+                quad = [grid[k0][0], grid[k1][0], grid[k1][1], grid[k0][1]]
+                nq = (quad[1].co - quad[0].co).cross(quad[3].co - quad[0].co)
+                mid = (quad[0].co + quad[2].co) * 0.5
+                if nq.dot(mid - cen) < 0:
+                    quad = list(reversed(quad))
+                m.face(quad, 'black')
+        for k0 in ((1, 1), (NG - 2, 1), (1, NG - 3)):
+            q = grid[k0][2]
+            n0 = grid[k0][3]
+            m.cyl(q - n0 * 0.001, q + n0 * 0.005, 0.0045, 'brightwork', seg=8)
+        hinge = cen + V3((-0.010, s * 0.055, 0.066))
+        n = _aim(hinge, V3((-12.0, s * 1.6, 1.0)))
+        ex, ey, ez = frame_of(n)
+        head = hinge + ez * 0.045
+        m.cyl(cen - out * 0.004, hinge, 0.011, 'brightwork', seg=10)                             # the bracket
+        m.cyl(hinge - V3((0, 0, 0.03)), hinge + V3((0, 0, 0.03)), 0.015, 'black', seg=12)        # the hinge knuckle, into the back of the housing
         m.rbox(head - ez * 0.026, (0.106, 0.156, 0.05), 0.016, 'brightwork', (ex, ey, ez))
         m.rbox(head - ez * 0.002, (0.098, 0.148, 0.004), 0.010, 'black', (ex, ey, ez))
         ob = m.finish('Mirror_' + k, None, sharp=40)
@@ -485,7 +542,25 @@ def build_pillars(B, Mesh, root):
         rf = _edge([rg], side, lambda v: v.x, zs)                                               # the rear door glass, front edge
         rd = _edge([rg], side, lambda v: -v.x, zs)                                              # ... its rear edge
         bl = _edge([glass], lambda v: v.x < -1.0 and side(v), lambda v: v.y * s, zs)          # the backlight's side edge
-        for a, b, bulge in ((ws, fr, 0.012), (fd, rf, 0.015), (rd, bl, 0.02)):
+        # the A pillar: one thin strip of the interior's trim, 7 cm wide, along the middle of the gap between the windscreen's edge and the front door glass's edge (the greenhouse's pillar is
+        # 6 to 15 cm between those edges; the trim covers the middle of it and the rubber of the glass edges stays visible on both sides), crowned toward the cabin
+        # the middle line of the gap and its direction are fitted over the rows where the two glass edges are clearly apart (they cross near the roof), then evaluated on every row: a smooth strip
+        good = [(pa, pb) for pa, pb in zip(ws, fr) if pa is not None and pb is not None and (pb - pa).length > 0.06]
+        zz = [0.5 * (pa.z + pb.z) for pa, pb in good]
+        cx = [0.5 * (pa.x + pb.x) for pa, pb in good]
+        cy = [0.5 * (pa.y + pb.y) for pa, pb in good]
+        px, py = np.polyfit(zz, cx, 2), np.polyfit(zz, cy, 2)
+        d0 = V3((good[len(good) // 2][1].x - good[len(good) // 2][0].x, good[len(good) // 2][1].y - good[len(good) // 2][0].y, 0)).normalized()
+        rows = []
+        for z in zs:
+            c = V3((float(np.polyval(px, z)), float(np.polyval(py, z)), z))
+            hw = 0.0375
+            inn = V3((0, -s, 0))
+            rows.append([c + d0 * (hw * (-1 + 2 * j / 6)) + inn * (0.014 * math.sin(math.pi * j / 6)) for j in range(7)])
+        if len(rows) >= 3:
+            m.grid(rows, 'headliner')
+            m.grid([list(reversed(r)) for r in rows], 'headliner')
+        for a, b, bulge in ((fd, rf, 0.015), (rd, bl, 0.02)):
             rows = []
             for pa, pb in zip(a, b):
                 if pa is None or pb is None:
