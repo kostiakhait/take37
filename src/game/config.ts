@@ -8,6 +8,9 @@ export const TAKE_LIMIT = 240;
 /** the street: x of the end line (a car that crosses it has reached the end of the street) and the extent of the set */
 export const STREET_END_X = 612;
 export const SET_BOUNDS = { x0: -34, x1: 640, halfWidth: 24 };
+/** the end of the chase (owner's decision 2026-11-12): the game takes the wheel and the two chase cars brake to a stop side by side before the film crew (people.ts CREW, x 603-608 on the +z sidewalk);
+ * each car that is still driving comes to its own place, a wrecked one stays where it is; the take ends when every car still driving stands at its place */
+export const FINISH = { stopX: 595, playerZ: -1.7, vincentZ: 1.7, settle: 1.0 };
 export const FIXED_DT = 1 / 60;
 export const SUBSTEPS = 4;
 

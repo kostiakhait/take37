@@ -59,6 +59,43 @@ export function gapAhead(c: Car, sim: Sim, laneZ: number, dir: 1 | -1, look: num
   return { gap, speed, who };
 }
 
+/** the stop at the end of the street (owner's decision 2026-11-12): the game takes the wheel and brings the car to its place before the film crew, beside the other chase car;
+ * the lane is changed over to the place's z on the way, the speed follows a braking curve to the stop point, slowed behind what is ahead. `done` once standing at the place. */
+export function parkDriver(stopX: number, laneZ: number, decel = 4.5) {
+  let laneNow = NaN;
+  const d = (c: Car, sim: Sim, dt: number) => {
+    if (c.wrecked) { c.ctl.throttle = 0; c.ctl.brake = 0.4; return; }
+    const p = c.veh.pos, v = speedOf(c), left = stopX - p[0];
+    if (Number.isNaN(laneNow)) laneNow = p[2];
+    // a standing thing in the place's lane between the car and its place (the tanker at the station, a wreck): round it by the other lane, back in once past it
+    const other = laneZ + (laneZ < 0 ? 3.4 : -3.4), want = standingIn(c, sim, laneZ, stopX) && !standingIn(c, sim, other, stopX - 4) ? other : laneZ;   // (the other car standing at its own place beside is not in the way)
+    laneNow += clamp(want - laneNow, -1.6 * dt, 1.6 * dt);
+    if (left < 0.4 || (left < 2 && v < 0.6)) { c.ctl.throttle = 0; c.ctl.brake = 1; c.ctl.steer += clamp(-c.ctl.steer, -0.08, 0.08); d.done = Math.abs(v) < 0.3; return; }
+    let target = Math.sqrt(2 * decel * Math.max(0, left - 0.4));
+    const g = gapAhead(c, sim, laneNow, 1, 120); if (g.gap < 120) target = Math.min(target, Math.max(0, g.speed) + Math.sqrt(2 * 5 * Math.max(0, g.gap - 4)));
+    target = Math.max(target, Math.min(2, left));   // creep the last metres
+    // the lane cascade of holdLane, with room for a lane change at low speed
+    const h = headingOf(c), hDes = clamp((laneNow - p[2]) * 0.6 / Math.max(v, 4), -0.25, 0.25), gain = 2.0 * 25 / Math.max(v, 10);
+    c.ctl.steer += clamp(clamp(gain * (hDes - h), -1, 1) - c.ctl.steer, -0.08, 0.08);
+    const e = target - v;
+    if (e >= 0) { c.ctl.throttle = clamp(e * 0.6, 0, 1); c.ctl.brake = 0; } else { c.ctl.throttle = 0; c.ctl.brake = clamp(-e * 0.35, 0, 1); }
+  };
+  d.done = false;
+  return d;
+}
+/** a car standing (or crawling) in a lane anywhere from beside this car to `toX`, overlapping it included */
+function standingIn(c: Car, sim: Sim, laneZ: number, toX: number): boolean {
+  const x0 = c.veh.pos[0] - c.build.length / 2;
+  for (const o of sim.cars) {
+    if (o === c || Math.abs(o.veh.pos[2] - laneZ) > (2.3 + o.build.width) / 2 - 0.05) continue;
+    if (o.veh.pos[0] + o.build.length / 2 < x0 || o.veh.pos[0] - o.build.length / 2 > toX) continue;
+    if (Math.hypot(o.veh.vel[0], o.veh.vel[2]) < 1.5) return true;
+  }
+  return false;
+}
+/** the distance a car at speed v needs to come to its place with parkDriver's braking (plus the lane change's run-in) */
+export const parkRunIn = (v: number, decel = 4.5) => v * v / (2 * decel) + 25;
+
 /** traffic: holds its lane at a cruise speed, slows behind what is ahead, stops for a wreck */
 export function trafficDriver(dir: 1 | -1, laneZ: number, cruise: number) {
   return (c: Car, sim: Sim) => {

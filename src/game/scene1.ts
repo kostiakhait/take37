@@ -39,7 +39,8 @@ export function buildScene1(layout: Layout, infos: KindInfos, seed: number, opts
   // the tanker: rolling slowly to the station and standing in front of its forecourt, in the player's lane (it delivers fuel there), a few metres from the pumps' street edge
   const stopX = layout.station.origin[0] - 8;
   const tanker = car('tanker', 'tanker', 'tanker', stopX - 50, -1.7, 0);
-  tanker.drive = (c, sm) => { const x = c.veh.pos[0], v = c.veh.vel[0]; if (c.wrecked) { c.ctl.throttle = 0; c.ctl.brake = 0.3; return; } const want = Math.min(6, Math.max(0, (stopX - x) * 0.35)); holdLane(c, -1.7, want); void sm; void v; };
+  tanker.drive = (c, sm) => { const x = c.veh.pos[0], v = c.veh.vel[0]; if (c.wrecked) { c.ctl.throttle = 0; c.ctl.brake = 0.3; return; } if (x >= stopX - 0.3 && Math.abs(v) < 1.5) { c.ctl.throttle = 0; c.ctl.brake = 1; return; }   // standing: the brake held (a coasting truck crept 40 m past its place)
+    const want = Math.min(6, Math.max(0, (stopX - x) * 0.35)); holdLane(c, -1.7, want); void sm; void v; };
   tanker.occupied = true;
   if (opts.traffic !== false) {
     let x = 75 + rng.range(0, 30), i = 0;

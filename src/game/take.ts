@@ -1,6 +1,7 @@
 // Copyright (C) Konstantin Khait, Squirrel Wisdom Academy, 2026
 // The flow of scene 1: briefing, clapperboard, the chase, the end of the take ("Cut!" or "That's a wrap"), the director's reaction, the budget, the best take. Pure (storage is passed in).
-import { BUDGET_START, TAKE_COST, TAKE_LIMIT, STREET_END_X, SET_BOUNDS, SCORE, FIXED_DT } from './config';
+import { BUDGET_START, TAKE_COST, TAKE_LIMIT, STREET_END_X, SET_BOUNDS, SCORE, FIXED_DT, FINISH } from './config';
+import { parkDriver, parkRunIn } from './ai';
 import { buildScene1, type KindInfos, type Scene1 } from './scene1';
 import { Spectacle, type Clip, type FrameShot } from './scoring';
 import { qRot } from '@ferret/destruction/vehicle';
@@ -27,6 +28,10 @@ export class Take {
   /** matthew has left the car */ out = false; outAt = -1;
   /** a body that jumped */ matthewDebris = -1;
   private calmSince = -1; private thresholdAt = -1;
+  /** the cars the game has taken over for the stop before the crew (FINISH) and since when all of them stand */
+  private parking = new Map<Car, ReturnType<typeof parkDriver>>(); private standSince = -1;
+  /** the game holds the player's wheel (the stop at the end of the street) */
+  get autoStop(): boolean { return this.scene ? this.parking.has(this.scene.player) : false; }
   siren = false; horn = false;
 
   constructor(private layout: Layout, private infos: KindInfos, private store: Storage) {
@@ -41,6 +46,7 @@ export class Take {
     this.scene = buildScene1(this.layout, this.infos, this.takeNo * 31 + 7 + seedOffset);
     this.spec = new Spectacle(this.scene.sim);
     this.t = 0; this.outcome = null; this.out = false; this.outAt = -1; this.matthewDebris = -1; this.calmSince = -1; this.thresholdAt = -1;
+    this.parking = new Map(); this.standSince = -1;
     this.phase = 'brief'; this.phaseT = 0;
   }
   private persist() { try { this.store.set('take37.budget', String(this.budget)); this.store.set('take37.takes', String(this.takeNo)); } catch { /* storage may be blocked */ } }
@@ -75,11 +81,24 @@ export class Take {
     if (this.phase === 'verdict') { this.runWorld(dt); if (this.phaseT > 9) { this.phase = this.budget <= 0 ? 'over' : 'choice'; this.phaseT = 0; } return; }
     if (this.phase !== 'play') { this.runWorld(dt); return; }
     this.t += dt;
-    if (inp.jump && !this.out) this.jumpOut();
-    this.drivePlayer(inp);
+    this.takeOver();
+    if (inp.jump && !this.out && !this.autoStop) this.jumpOut();
+    if (!this.autoStop) this.drivePlayer(inp);
     this.runWorld(dt);
     this.judge(inp);
   }
+  /** a chase car still driving that comes within its braking run of the crew is taken over and brought to its place */
+  private takeOver() {
+    const s = this.scene;
+    for (const [c, z] of [[s.player, FINISH.playerZ], [s.vincent, FINISH.vincentZ]] as [Car, number][]) {
+      if (this.parking.has(c) || !this.driving(c)) continue;
+      const fwd = qRot(c.veh.rot, [1, 0, 0]), v = Math.max(0, c.veh.vel[0] * fwd[0] + c.veh.vel[2] * fwd[2]);
+      if (c.veh.pos[0] < FINISH.stopX - parkRunIn(v)) continue;
+      const d = parkDriver(FINISH.stopX, z); this.parking.set(c, d); c.drive = d;
+    }
+  }
+  /** a chase car that still takes part in the stop: not wrecked, and for the player's car Matthew still in it */
+  private driving(c: Car): boolean { return !c.wrecked && (c !== this.scene.player || c.occupied); }
   private runWorld(dt: number) {
     const sim = this.scene.sim; sim.step(dt);
     const ev = sim.drain(); this.spec.consume(ev); this.pending.push(...ev);
@@ -98,7 +117,13 @@ export class Take {
     if (inp.cut) return this.finish(points >= SCORE.wrapAt ? 'wrap' : 'cut', 'self');
     const outside = (x: number, z: number) => x < SET_BOUNDS.x0 || x > SET_BOUNDS.x1 || Math.abs(z) > SET_BOUNDS.halfWidth;
     if (outside(p[0], p[2]) && !this.out) return this.finish('cut', 'left');
-    if (p[0] > STREET_END_X || vin[0] > STREET_END_X) return this.finish(points >= SCORE.wrapAt ? 'wrap' : 'cut', 'end');
+    // the end of the street: the take ends when every chase car still driving stands at its place before the crew (at least one has come)
+    const live = [s.player, s.vincent].filter((c) => this.driving(c));
+    const standing = this.parking.size > 0 && live.length > 0 && live.every((c) => this.parking.get(c)?.done);
+    if (standing) { if (this.standSince < 0) this.standSince = this.t; } else this.standSince = -1;
+    if (standing && this.t - this.standSince >= FINISH.settle) return this.finish(points >= SCORE.wrapAt ? 'wrap' : 'cut', 'end');
+    // a car pushed past the end line (a wreck sliding on) ends it as before
+    if (!this.parking.size && (p[0] > STREET_END_X || vin[0] > STREET_END_X)) return this.finish(points >= SCORE.wrapAt ? 'wrap' : 'cut', 'end');
     if (this.t > TAKE_LIMIT) return this.finish(points >= SCORE.wrapAt ? 'wrap' : 'cut', 'time');
   }
 
