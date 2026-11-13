@@ -155,3 +155,7 @@ The foliage of the street's trees is to be improved, most likely through its tex
 ## Walls of houses and the station (owner's decision 2026-11-12)
 
 No collapse of walls: house walls stay whole after blasts and impacts. Shop windows, doors, signs and awnings break (buildings destructible gradually); the gas station is brought down through its canopy and roof, not through its walls.
+
+### Sinking of ships (owner's decision 2026-11-12)
+
+Hybrid: a hit makes a breach, the engine's vessel physics (compartments, breaches, flooding, heel, capsize) counts the flooding, but accelerated so that a ship goes down in 20-40 s; heel, trim and capsizing follow from where it was hit. People on a tilting or sinking deck slide and fall overboard through Walkers. Destroyers do not sink: only fires and explosions break out on them. Not built yet: the mechanics of scene 2 are designed after its field and assets.
