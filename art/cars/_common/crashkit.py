@@ -86,6 +86,12 @@ class Car:
         self.belt = float(min(world(self.obs[n])[0][:, 2].min() for n in gl)) if gl else 0.68 * self.zroof
         self.hinge_x = float(world(self.obs['Hood'])[0][:, 0].min()) if 'Hood' in self.obs else 0.0
         self.wheels = {n[6:8]: self.obs[n] for n in self.obs if n.startswith('Wheel_') and len(n) == 8}
+        self.plates = {}
+        if 'Ends' in self.obs:
+            import crashfragile
+            for c in crashfragile.comp_table(self.obs['Ends']):
+                if 'M_plate' in c['mats']:
+                    self.plates['front' if c['c'][0] > 0 else 'rear'] = [float(x) for x in c['c']]
         g = world(self.obs['Glass'])[0] if 'Glass' in self.obs else body
         self.xcab0, self.xcab1 = float(g[:, 0].min()), float(g[:, 0].max())
 
@@ -375,28 +381,90 @@ def bowls(P, items):
     return Q
 
 
-def break_glass(ob, region, frac, seed, cells=60):
-    """remove the glass faces (M_glass only) of the region in Voronoi shards: frac 1 = gone, less = a broken pane with jagged remains; the frame (seal, chrome) stays"""
+def break_glass(ob, region, frac, seed, cells=170, tilt=7.0, mats=('M_glass',)):
+    """shatter the glass faces (M_glass only) of the region: Voronoi cells of the pane; frac < 1 = a cracked pane (that share of the cells is out, the rest stay as tilted shards with gaps between them),
+    frac 1 = gone (only some cells on the frame stay as jagged teeth). The frame (seal, chrome) is never moved."""
     me = ob.data
     mw = ob.matrix_world
     bm = bmesh.new()
     bm.from_mesh(me)
+    lay = bm.faces.layers.int.new('cell')
+    bm.faces.ensure_lookup_table()
+    bm.faces.index_update()
     names = [m.name if m else '' for m in me.materials]
-    fs = [f for f in bm.faces if names[f.material_index] == 'M_glass' and region(mw @ f.calc_center_median())]
-    if fs and frac < 0.999:
-        res = bmesh.ops.triangulate(bm, faces=fs, quad_method='BEAUTY')
-        fs = [f for f in res['faces']] + [f for f in fs if f.is_valid]
-        fs = list({id(f): f for f in fs}.values())
+    fs = [f for f in bm.faces if names[f.material_index] in mats and region(mw @ f.calc_center_median())]
     if not fs:
         bm.free()
         return 0
+    sset = set(f.index for f in fs)
     cs = np.array([(mw @ f.calc_center_median())[:] for f in fs])
     rnd = random.Random(seed)
-    lo, hi = cs.min(axis=0), cs.max(axis=0)
-    seeds = np.array([[rnd.uniform(lo[i], hi[i]) for i in range(3)] for _ in range(cells)])
+    n = min(cells, max(3, len(fs) // 6))
+    seeds = cs[[rnd.randrange(len(fs)) for _ in range(n)]]
     cell = np.argmin(((cs[:, None, :] - seeds[None, :, :]) ** 2).sum(axis=2), axis=1)
-    gone = set(range(cells)) if frac >= 0.999 else {k for k in range(cells) if rnd.random() < frac}
-    kill = [f for f, k in zip(fs, cell) if k in gone]
+    onframe = [any(len(e.link_faces) == 1 or any(lf.index not in sset for lf in e.link_faces) for e in f.edges) for f in fs]
+    frame_cells = set(int(c) for c, o in zip(cell, onframe) if o)
+    if frac >= 0.999:
+        gone = {k for k in range(n) if not (k in frame_cells and rnd.random() < 0.5)}
+    else:
+        gone = {k for k in range(n) if rnd.random() < frac}
+    for f, c in zip(fs, cell):
+        f[lay] = int(c)
+    kill = [f for f, c in zip(fs, cell) if int(c) in gone]
+    bmesh.ops.delete(bm, geom=kill, context='FACES')
+    keep = [f for f in fs if f.is_valid]
+    cut = [e for e in {e for f in keep for e in f.edges if len(e.link_faces) == 2 and e.link_faces[0].index in sset and e.link_faces[1].index in sset and e.link_faces[0][lay] != e.link_faces[1][lay]}]
+    bmesh.ops.split_edges(bm, edges=cut)
+    frame_v = set()
+    for f in bm.faces:
+        if f.index not in sset and f.is_valid:
+            frame_v.update(v.index for v in f.verts)
+    bm.verts.ensure_lookup_table()
+    byc = {}
+    for f in keep:
+        if f.is_valid:
+            byc.setdefault(f[lay], []).append(f)
+    for c, faces in byc.items():
+        vs = {v for f in faces for v in f.verts if v.index not in frame_v}
+        if not vs:
+            continue
+        ctr = sum((mw @ v.co for v in vs), V3()) / len(vs)
+        nrm = sum((mw.to_3x3() @ f.normal for f in faces), V3()).normalized()
+        axis = V3((rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(-1, 1))).normalized()
+        q = Quaternion(axis, math.radians(rnd.uniform(0.4, 1.0) * tilt * (2.2 if frac >= 0.999 else 1.0)))
+        off = nrm * rnd.uniform(-0.012, 0.012)
+        inv = mw.inverted()
+        for v in vs:
+            w = mw @ v.co
+            v.co = inv @ (ctr + q @ (w - ctr) + off)
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return len(kill)
+
+
+def tear(ob, center, radii, frac, seed, cells=24):
+    """tear a ragged hole in a painted mesh: every face whose centre lies in the ellipsoid belongs to a Voronoi cell; `frac` of the cells are removed (outer skin and inner lining together)"""
+    me = ob.data
+    mw = ob.matrix_world
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    c0, r0 = np.array(center), np.array(radii)
+    fs, cs = [], []
+    for f in bm.faces:
+        p = np.array((mw @ f.calc_center_median())[:])
+        if np.sum(((p - c0) / r0) ** 2) < 1.0:
+            fs.append(f)
+            cs.append(p)
+    if len(fs) < 4:
+        bm.free()
+        return 0
+    cs = np.array(cs)
+    rnd = random.Random(seed)
+    seeds = cs[[rnd.randrange(len(fs)) for _ in range(cells)]]
+    cell = np.argmin(((cs[:, None, :] - seeds[None, :, :]) ** 2).sum(axis=2), axis=1)
+    out = {k for k in range(cells) if rnd.random() < frac}
+    kill = [f for f, c in zip(fs, cell) if int(c) in out]
     bmesh.ops.delete(bm, geom=kill, context='FACES')
     bm.to_mesh(me)
     bm.free()
@@ -446,9 +514,11 @@ def mesh_obs(root):
 
 
 def crash(root, spec, log=print):
+    import crashfragile
     car = Car(root)
     obs = mesh_obs(root)
     seed = spec.get('seed', 7)
+    spec = crashfragile.resolve_fragile(spec, car)
     fields = [Crush(car, spec[k]) for k in ('crush', 'crush2') if spec.get(k)]
     if spec.get('roof'):
         fields.append(Roof(car, spec['roof']))
@@ -459,12 +529,17 @@ def crash(root, spec, log=print):
         for f in fields:
             Q = f(Q, N)
         return bowls(Q, bowl_items) if bowl_items else Q
-    zone = lambda pts: np.logical_or.reduce([f.mask(pts) for f in fields]) if fields else np.zeros(len(pts), bool)   # noqa: E731
+    def zone(pts):
+        z = np.logical_or.reduce([f.mask(pts) for f in fields]) if fields else np.zeros(len(pts), bool)
+        for b in bowl_items:
+            z = z | (np.linalg.norm(pts - np.array(b['center']), axis=1) < b['r'] * 1.7)
+        return z
+    glass_fine = bool(spec.get('glass'))
     dense = ['Body', 'Hood', 'Trunk', 'Tailgate', 'Bumper_F', 'Bumper_R', 'Trim', 'Glass', 'Interior'] + [n for n in obs if n.startswith(('Door_', 'Glass_', 'Trim_'))]
     for nm in dense:
         if nm in obs:
             before = len(obs[nm].data.vertices)
-            subdivide(obs[nm], zone, spec.get('edge', 0.035))
+            subdivide(obs[nm], (lambda pts: np.ones(len(pts), bool)) if (glass_fine and nm.startswith('Glass')) else zone, 0.032 if nm.startswith('Glass') else spec.get('edge', 0.035))
             log('CK subdivided', nm, before, '->', len(obs[nm].data.vertices))
     for nm, ob in obs.items():
         if nm in RIGID or nm == 'SteeringWheel':
@@ -526,6 +601,12 @@ def crash(root, spec, log=print):
         if ob is not None:
             n = break_glass(ob, reg, frac, seed + zlib.crc32(gname.encode()) % 97)
             log('CK glass', gname, 'removed faces', n)
+    obs = mesh_obs(root)
+    crashfragile.apply_fragile(obs, spec.get('fragile', {}), seed)
+    for t in spec.get('tears', []):
+        ob = obs.get(t['node'])
+        if ob is not None:
+            log('CK tear', t['node'], tear(ob, t['center'], t['radii'], t['frac'], seed + 5, t.get('cells', 24)))
     for nm in spec.get('remove', []):
         o = bpy.data.objects.get(nm)
         if o is not None:
