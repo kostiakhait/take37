@@ -151,3 +151,7 @@ This is to be a general mechanism of the engine, not a game trick: for any objec
 ## Trees: leaves and bark (owner's task 2026-11-12)
 
 The foliage of the street's trees is to be improved, most likely through its textures (the leaf cards' colour, alpha and normal maps); the rest of the trees (shape, placement, sway) is fine as it is. The bark is to be improved the same way, by its texture.
+
+## Walls of houses and the station (owner's decision 2026-11-12)
+
+No collapse of walls: house walls stay whole after blasts and impacts. Shop windows, doors, signs and awnings break (buildings destructible gradually); the gas station is brought down through its canopy and roof, not through its walls.
