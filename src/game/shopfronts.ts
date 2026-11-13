@@ -253,11 +253,14 @@ export class ShopSim {
 const sub3 = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 
 /** the buildings of the street that have their shop front converted: the node of the street glb, and the file with the shell and the parts */
-export const SHOP_BUILDINGS: { bld: string; url: string }[] = [
-  { bld: 'Bld_R_101_19', url: '/art/street/shops/shop_19.glb' }, { bld: 'Bld_R_102_21', url: '/art/street/shops/shop_21.glb' }, { bld: 'Bld_R_103_28', url: '/art/street/shops/shop_28.glb' },
-  { bld: 'Bld_R_104_08', url: '/art/street/shops/shop_08.glb' }, { bld: 'Bld_R_105_32', url: '/art/street/shops/shop_32.glb' }, { bld: 'Bld_R_106_25', url: '/art/street/shops/shop_25.glb' },
-  { bld: 'Bld_R_107_18', url: '/art/street/shops/shop_18.glb' },
+/** THE one distance (m) for the shop fronts: within it a converted building is drawn as its shell with the breakable parts, beyond it as the plain level of detail with an intact front (shopfronts-view.ts). The profiler may change it; nothing else in the code holds a copy. */
+export const SHOP_RANGE = 130;
+/** the street's building nodes whose shop front is converted (stage 3: the left side from x 380 to 500, the right side from 375 to 507); a node ends in its design number, whose file holds the shell and the parts */
+const CONVERTED = [
+  'Bld_L_036_21', 'Bld_L_037_32', 'Bld_L_038_31', 'Bld_L_039_16', 'Bld_L_040_11', 'Bld_L_041_07', 'Bld_L_042_34', 'Bld_L_043_14', 'Bld_L_044_06', 'Bld_L_045_19',
+  'Bld_R_098_26', 'Bld_R_099_10', 'Bld_R_100_22', 'Bld_R_101_19', 'Bld_R_102_21', 'Bld_R_103_28', 'Bld_R_104_08', 'Bld_R_105_32', 'Bld_R_106_25', 'Bld_R_107_18',
 ];
+export const SHOP_BUILDINGS: { bld: string; url: string }[] = CONVERTED.map((bld) => ({ bld, url: `/art/street/shops/shop_${bld.slice(-2)}.glb` }));
 
 /** the bounds of the shell and of every part of the converted buildings in the game's frame, read off the JSON of the street and of the shop files (no mesh is loaded) */
 export function parseShops(street: GLtf, files: { bld: string; json: GLtf }[]): ShopDefs {

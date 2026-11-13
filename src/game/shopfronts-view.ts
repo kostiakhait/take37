@@ -3,7 +3,7 @@
 // meshes are taken out before the street is merged); a part that the sim says is off is hidden, a pane that is only cracked gets the module's crack star, an awning that came off its bolts falls.
 // The pieces of a break (shards, splinters) are drawn by view.ts from the module's `destruction:hit` like every other thing's.
 import { starOf, starSegments } from '@ferret/destruction/view-shards';
-import { SHOP_BUILDINGS, type ShopState } from './shopfronts';
+import { SHOP_BUILDINGS, SHOP_RANGE, type ShopState } from './shopfronts';
 import type { Sim } from './sim';
 
 type Node = BABYLON.TransformNode;
@@ -61,10 +61,10 @@ export class ShopView {
     this.lod(new BABYLON.Vector3(0, 0, 0), true);
   }
 
-  /** near: the shell with its parts; far (past 130 m): the plain level of detail (the parts are inside it) */
+  /** near: the shell with its parts; far (past SHOP_RANGE): the plain level of detail (the parts are inside it) */
   private lod(cam: BABYLON.Vector3, force = false) {
     for (const l of this.lods) {
-      const near = Math.hypot(l.at.x - cam.x, l.at.z - cam.z) < 130;
+      const near = Math.hypot(l.at.x - cam.x, l.at.z - cam.z) < SHOP_RANGE;
       if (force || l.hi.isEnabled() !== near) { l.hi.setEnabled(near); l.lo.setEnabled(!near); if (!near) for (const [id, n] of this.nodes) n.setEnabled(false); else for (const [id, n] of this.nodes) n.setEnabled(!this.shownOff.has(id)); }
     }
   }
