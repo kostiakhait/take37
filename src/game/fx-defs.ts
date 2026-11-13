@@ -2,7 +2,7 @@
 // Effects of scene 1 that the engine's catalogue does not have as such, written in the module's own definition language with its builders (puff, streaks, glow): a burst of collision sparks, the scrape of metal on asphalt,
 // the glitter of breaking glass, tyre smoke with its black mark, a dirt kick, a fuel spill, a flash with a shock ring for chain blasts. Every size and count follows a parameter that the game fills from the physics event
 // (energy in joules, speed in m/s, fuel in kilograms); the numbers that are art (colours, flicker) are marked as such. No Babylon here.
-import { puff, streaks, glow, type VfxDef, type Rgb } from '@ferret/vfx';
+import { puff, streaks, glow, FULL_CATALOG, type VfxDef, type Rgb } from '@ferret/vfx';
 
 const E = '(max(energy, 100) / 1000)';           // energy in kJ, never zero
 const defs: VfxDef[] = [];
@@ -80,12 +80,28 @@ add({
   emitters: [
     glow({ name: 'flash', max: 6, bursts: [{ at: 0, count: 1 }], life: [0.12, 0.3], size: ['pow(tnt, 0.3333) * 4', 'pow(tnt, 0.3333) * 6'], sizeCurve: [[0, 0.4], [0.15, 1], [1, 1.3]], rgb: [1, 0.86, 0.6], alpha: [[0, 0.8], [0.3, 0.6], [1, 0]], emissive: 2.2, flip: 'soft-disc' }),
     puff({ name: 'ring', max: 160, bursts: [{ at: 0.03, count: 'clamp(30 + pow(tnt, 0.3333) * 12, 40, 150)' }], shape: { shape: 'disc', radius: 'pow(tnt, 0.3333) * 0.4', ring: true }, life: [1.5, 3.5], velocity: { speed: ['pow(tnt, 0.3333) * 8', 'pow(tnt, 0.3333) * 14'], direction: 'out', spread: 6 }, size: ['pow(tnt, 0.3333) * 0.5', 'pow(tnt, 0.3333) * 1.1'], grow: 3, rgb: [0.62, 0.55, 0.47], alpha: 0.5, flip: 'dust-puff', modules: [{ module: 'drag', coefficient: 1.4 }] }),
-    glow({ name: 'glow', max: 30, bursts: [{ at: 0.1, count: 'clamp(pow(tnt, 0.3333) * 3, 4, 30)' }], life: [1.2, 3.8], size: ['pow(tnt, 0.3333) * 3', 'pow(tnt, 0.3333) * 6'], sizeCurve: [[0, 0.6], [0.3, 1], [1, 1.4]], shape: { shape: 'sphere', radius: 'pow(tnt, 0.3333) * 1.5' }, velocity: { speed: [0, 1.5], direction: 'up', spread: 80 }, rgb: [1, 0.45, 0.12], alpha: [[0, 0], [0.15, 0.55], [1, 0]], emissive: 2.2, flip: 'soft-disc' }),
+    glow({ name: 'glow', max: 30, bursts: [{ at: 0.1, count: 'clamp(pow(tnt, 0.3333) * 1.2, 3, 12)' }], life: [1.2, 3.8], size: ['pow(tnt, 0.3333) * 3', 'pow(tnt, 0.3333) * 6'], sizeCurve: [[0, 0.6], [0.3, 1], [1, 1.4]], shape: { shape: 'sphere', radius: 'pow(tnt, 0.3333) * 1.5' }, velocity: { speed: [0, 1.5], direction: 'up', spread: 80 }, rgb: [1, 0.45, 0.12], alpha: [[0, 0], [0.15, 0.4], [1, 0]], emissive: 1.4, flip: 'soft-disc' }),
     streaks({ name: 'embers', max: 200, bursts: [{ at: 0.05, count: 'clamp(40 * pow(tnt, 0.3333), 40, 200)' }], shape: { shape: 'sphere', radius: 'pow(tnt, 0.3333) * 0.5' }, life: [1.5, 4], velocity: { speed: ['pow(tnt, 0.3333) * 2', 'pow(tnt, 0.3333) * 7'], direction: 'up', spread: 75 }, size: [0.03, 0.08], rgb: ORANGE, glow: true, stretch: 0.06, emissive: 3, temperature: [1300, 2200], modules: [{ module: 'gravity', scale: 0.5 }, { module: 'drag', coefficient: 0.25 }, { module: 'wind', influence: 0.3 }, { module: 'collide', with: 'ground', onHit: 'bounce', bounce: 0.25 }] }),
   ],
   light: { rgb: [1, 0.72, 0.38], intensity: 'pow(tnt, 0.6667) * 6e4', range: 'pow(tnt, 0.3333) * 45', over: [[0, 1], [0.05, 0.9], [0.25, 0.45], [0.7, 0.15], [1, 0]], flicker: { amount: 0.35, rate: 12 }, farGlow: 'pow(tnt, 0.3333) * 90' },
   dot: { kind: 'light', rgb: [1, 0.7, 0.35], intensity: 1, size: 4 }, game: { tags: ['blast'] },
 });
+
+// ---- the fireball of the tanker: the catalogue's fuel-air ball with fewer, dimmer sprites. Measured (frames at 0.4, 1.5, 4 and 10 s, effects skipped one by one): the whole sky and the far street went white
+//      for four seconds because of this ball alone: 150 additive sprites of 50 to 80 m each, every one at the radiance cap, stacked in front of the camera and pushed through the ACES shoulder to pure white. Not the
+//      sky, the light cap, the tone mapping, the bloom or the exposure. A ball of 28 sprites at 0.3 of the radiance keeps the colour (orange to yellow) and the size, which are the catalogue's. ----
+{
+  const base = FULL_CATALOG.find((d) => d.name === 'blast.fuel-air') as unknown as (VfxDef & { emitters: { name?: string; rate?: unknown; render?: { emissive?: unknown } }[] }) | undefined;
+  if (base) {
+    const d = JSON.parse(JSON.stringify(base)) as typeof base;
+    d.name = 'take37.fireball'; d.seed = 3709;
+    for (const e of d.emitters) if (e.name === 'ball') {
+      if (typeof e.rate === 'string') e.rate = e.rate.replace(/^120\s*\//, '28 /');
+      if (e.render && typeof e.render.emissive === 'string') e.render.emissive = e.render.emissive.replace(/^1\.4\s*\*/, '0.4 *');
+    }
+    add(d);
+  }
+}
 
 // ---- a flying burning piece: a trail of sparks and a thin stream of smoke, for a part thrown off a car or a fragment of a tank (follows the piece through the host's attachment) ----
 add({

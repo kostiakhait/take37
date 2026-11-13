@@ -1,11 +1,11 @@
 // Copyright (C) Konstantin Khait, Squirrel Wisdom Academy, 2026
 // The picture of scene 1: the sim's cars, props and debris drawn with the art's models in the Babylon scene of the set; fire, smoke and blasts from the engine's vfx; the first-person camera of the police cab and the set cameras.
 // VIEW FILE: it reads the sim and never writes to it.
-import { VfxSystem, VfxBabylonView, FULL_CATALOG } from '@ferret/vfx';
+import { VfxSystem, VfxBabylonView, FULL_CATALOG, type VfxHandle } from '@ferret/vfx';
 import { FxDirector } from './fx';
 import { qRot } from '@ferret/destruction/vehicle';
 import { DentCage } from '@ferret/destruction/view-dents';
-import { ShardView, type MeshData, type ShardHost } from '@ferret/destruction/view-shards';
+import { ShardView, type MeshData, type ShardHost, type ShardShare } from '@ferret/destruction/view-shards';
 import type { DebrisPiece } from '@ferret/destruction/debris';
 import { CAR_KINDS, SET_CAMERAS, type KindId, type SetCamera } from './config';
 import type { Take } from './take';
@@ -60,7 +60,7 @@ export class GameView {
   constructor(readonly scene: BABYLON.Scene, readonly camera: BABYLON.UniversalCamera, private propNodes: Map<string, BABYLON.TransformNode>, private stationNodes: Map<string, BABYLON.TransformNode>, shadow: BABYLON.ShadowGenerator | null = null) {
     this.vfx.registerAll(FULL_CATALOG as never);
     this.fx = new FxDirector(this.vfx);
-    this.vfxView = new VfxBabylonView(scene, this.vfx, camera, { soft: false /* soft particles need a depth pass of the whole scene every frame (about a second a frame here) */, supports: ['particles', 'impostor', 'dot'], parts: { maxLights: 6, groundHeight: () => 0, candelaScale: 1 / 40000, maxLightIntensity: 0.5, maxTotalIntensity: 0.85, steadyLights: true /* the six effect lights stay on (dark while unused): a light switched on or off changed every lit material's shader, and while the street's hundreds of shaders recompiled nothing of the street or the cars was drawn */ } } as never);
+    this.vfxView = new VfxBabylonView(scene, this.vfx, camera, { keepBatches: true /* an effect kind idle for 600 frames lost its batch and shader, compiled again at the next blast (measured at the station) */, soft: false /* soft particles need a depth pass of the whole scene every frame (about a second a frame here) */, supports: ['particles', 'impostor', 'dot'], parts: { maxLights: 6, groundHeight: () => 0, candelaScale: 1 / 40000, maxLightIntensity: 0.5, maxTotalIntensity: 0.85, steadyLights: true /* the six effect lights stay on (dark while unused): a light switched on or off changed every lit material's shader, and while the street's hundreds of shaders recompiled nothing of the street or the cars was drawn */ } } as never);
     const hemi = scene.lights.find((l) => l instanceof BABYLON.HemisphericLight) as BABYLON.HemisphericLight | undefined;
     if (hemi) { this.skyLight = hemi; this.skyBase = hemi.intensity; this.skyColor = hemi.diffuse.clone(); }
     // the effects' lights (up to six) must reach the street's materials: the default of a material is four lights in all
@@ -261,6 +261,7 @@ export class GameView {
     this.shardFrame(sim.ds, dt);
     this.propsFrame(take);
     this.fx.frame(take, dt, [cam.x, cam.y, cam.z]);
+    if (this.warm) this.warmFrame();
     // camera
     this.placeCamera(take, dt, head);
     const t0 = performance.now();
@@ -271,6 +272,43 @@ export class GameView {
       const f = this.fx.flashLevel(dt), L = this.skyLight;
       if (f > 0.002) { if (!this.flashing) { this.flashing = true; this.skyBase = L.intensity; this.skyColor.copyFrom(L.diffuse); } L.intensity = this.skyBase * (1 + f * 0.35); BABYLON.Color3.LerpToRef(this.skyColor, new BABYLON.Color3(1, 0.62, 0.34), Math.min(0.5, f * 0.8), L.diffuse); }
       else if (this.flashing) { this.flashing = false; L.intensity = this.skyBase; L.diffuse.copyFrom(this.skyColor); }
+    }
+  }
+  // ---- first-use shaders, compiled behind the splash ----
+  /** Measured at the tanker blast (frame 38 -> 47 compiled effects, a stall of the frame): the new variants are the materials that nothing had drawn yet, not a changed light state: the effect batches (billboard soft-disc, fireball, flame, dust-puff, spark streak, dots) and the PBR materials of flying pieces (debris-metal, piece-glass, piece-brick...).
+   *  So in the first frames of the page every effect of the game is spawned once in front of the camera and stepped for a few seconds, and a box of each piece material (plain and as an instance, as the shards are drawn) is shown, so that the real draws compile the shaders now. */
+  private warm: { n: number; round: number; handles: VfxHandle[]; nodes: BABYLON.Node[] } | null = { n: 0, round: 0, handles: [], nodes: [] };
+  get warming(): boolean { return this.warm !== null; }
+  /** run the warm-up again (the checks use it) */
+  rewarm() { this.warm = { n: 0, round: 0, handles: [], nodes: [] }; }
+  private warmFrame() {
+    const w = this.warm!, cam = this.camera;
+    if (w.n === 0) {
+      const f = cam.getForwardRay(1).direction, at: [number, number, number] = [cam.position.x + f.x * 12, Math.max(0.6, cam.position.y - 1.2), cam.position.z + f.z * 12];
+      for (const n of this.fx.warmNames()) { const h = this.fx.spawn(n, at); if (h) w.handles.push(h); }
+      // Root cause of the compiles at the blast, measured by hooking the render-target renders: the scene holds meshes with transmissive PBR materials (the cars' glass, KHR_materials_transmission), and Babylon's transmission helper then renders every opaque mesh a second time into 'opaqueSceneTexture' each frame the glass is in view, with the image processing left to a post process. That pass has its own shader variant of every opaque material (IMAGEPROCESSINGPOSTPROCESS), so a material drawn for the first time (flying pieces, debris) compiles twice, once for the screen and once for that pass. A glass mesh is put in front of the camera so that the pass runs during the warm-up.
+      const glass = this.scene.meshes.find((m) => { const mm = m.material as unknown as { subSurface?: { isRefractionEnabled?: boolean } } | null; return m instanceof BABYLON.Mesh && !!mm?.subSurface?.isRefractionEnabled && m.getTotalVertices() > 0; });
+      if (glass) { const g = (glass as BABYLON.Mesh).clone('warmglass', null); if (g) { g.setParent(null); g.position.set(at[0], at[1] + 1, at[2]); g.scaling.setAll(0.2); g.alwaysSelectAsActiveMesh = true; g.isPickable = false; g.setEnabled(true); w.nodes.push(g); } }
+      // the crack stars of glass are line systems (the colour shader): one is drawn now
+      const ln = BABYLON.MeshBuilder.CreateLineSystem('warmlines', { lines: [[new BABYLON.Vector3(at[0], at[1] + 3, at[2]), new BABYLON.Vector3(at[0] + 0.3, at[1] + 3.2, at[2])]] }, this.scene); ln.alwaysSelectAsActiveMesh = true; ln.isPickable = false; w.nodes.push(ln);
+      const mats: BABYLON.Material[] = [this.metal, this.cloth, this.pieceMat('Facade', ''), this.pieceMat('x', 'glass'), this.pieceMat('Bench', ''), this.pieceMat('Planter', ''), this.pieceMat('Bin', ''), this.pieceMat('zz', '')];
+      mats.forEach((m, i) => {
+        const x = at[0] + (i - 4) * 0.6;
+        // a flying piece or a car part: a plain mesh with the material, as makeDebris draws it
+        const box = BABYLON.MeshBuilder.CreateBox('warm' + i, { size: 0.3 }, this.scene); box.material = m; box.isPickable = false; box.alwaysSelectAsActiveMesh = true; this.shadow?.addShadowCaster(box, false);
+        box.position.set(x, at[1] + 1.2, at[2]);
+        // a shard: a mesh with 32-bit indices that stays disabled, and instances of it (addShards)
+        const vd = BABYLON.VertexData.CreateBox({ size: 0.3 }); vd.indices = Uint32Array.from(vd.indices as ArrayLike<number>); vd.uvs = null as never; vd.tangents = null as never; vd.colors = null as never;   // positions, normals and indices only, as the shards are made (addShards)
+        const proto = new BABYLON.Mesh('warmp' + i, this.scene); vd.applyToMesh(proto); proto.material = m; proto.isPickable = false; proto.position.set(x, at[1] + 2.6, at[2]); proto.alwaysSelectAsActiveMesh = true;
+        const inst = proto.createInstance('warmi' + i); inst.alwaysSelectAsActiveMesh = true; inst.position.set(x, at[1] + 2, at[2]);
+        w.nodes.push(box, proto, inst);
+      });
+    }
+    for (let k = 0; k < 24; k++) this.vfx.step(1 / 60);   // 0.4 s of effect time per frame, so every emitter of every effect has batches to draw
+    if (++w.n >= 10) {
+      for (const h of w.handles) this.vfx.stop(h); for (const n of w.nodes) n.setEnabled(false); this.fx.reset();   /* kept, not disposed: disposing a mesh releases its material's effect, and the cache entry with it (measured: the same key compiled again at the blast) */ this.fx.spawned.clear();
+      // two rounds: the transmission helper's pass only starts drawing once the glass has been in view for a frame, so the first round does not reach every variant (measured: a repeat compiled six more)
+      this.warm = w.round === 0 ? { n: 0, round: 1, handles: [], nodes: [] } : null;
     }
   }
   push(evs: SimEvent[]) { for (const e of evs) this.eventQueue.push(e); }
@@ -374,6 +412,7 @@ export class GameView {
     }
     return m;
   }
+  private shardShared: ShardShare['cache'] = new Map();
   private addShards(ds: unknown, p: { id: string; part: string; pieces: unknown[]; plan: { pieces: DebrisPiece[] } | null; origin: V3 }) {
     if (!p.plan || p.plan.pieces.length === 0) return;
     const mat = this.pieceMat(p.id, p.part), scene = this.scene, shadow = this.shadow;
@@ -392,7 +431,7 @@ export class GameView {
         };
       },
     };
-    const pieces = p.plan.pieces, view = new ShardView(host, pieces.map((q) => q.spec), p.origin, 'shard' + this.shards.length);
+    const pieces = p.plan.pieces, view = new ShardView(host, pieces.map((q) => q.spec), p.origin, 'shard' + this.shards.length, 0.005, { below: 0.6, quantum: 0.08, cache: this.shardShared, tag: String(mat.uniqueId) });   // small pieces share prototypes across breaks (a tank blast made 2601 prototypes for 3088 pieces and a 1.5 s frame)
     void shadow;
     this.shards.push({ view, pieces, rot: pieces.map(() => BABYLON.Quaternion.Identity()), ang: pieces.map((q) => [...q.spec.angular] as V3), ds: ds as never });
     this.shardStats.sets++; this.shardStats.pieces += pieces.length; this.shardStats.prototypes += view.stats.prototypes;

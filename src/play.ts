@@ -142,3 +142,5 @@ async function main() {
   splash.hide();
 }
 main().catch((e) => { console.error(e); win.take37Error = String((e as Error)?.stack ?? e); });
+  while (view.warming) await set.settle(1);   // the effects' and the flying pieces' shaders are compiled by real draws (view.ts warmFrame), still under the splash
+

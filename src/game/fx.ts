@@ -56,6 +56,12 @@ export class FxDirector {
     this.trauma = 0; this.flash = 0; this.warm = 0;
   }
 
+  /** every effect name this director can spawn, for the first-use shader warm-up (view.ts): the game's own definitions and the catalogue ones it asks for */
+  warmNames(): string[] {
+    const own = TAKE37_FX.map((d) => d.name), cat = ['impact.metal', 'blast.secondary', 'dust.collapse', 'electric.short-circuit', 'electric.arc', 'water.fountain', 'impact.wood', 'fire.vehicle', 'fire.pool-petrol', 'fire.torch', 'fire.building', 'fire.jet', 'fire.ruins', 'smoke.chimney', 'blast.fuel-air', 'blast.vessel', 'blast.he-ground', 'rocket.small'];
+    return [...own, ...cat].filter((n) => this.vfx.has(n));
+  }
+
   // ---- spawning ----
   has(name: string) { return this.vfx.has(name); }
   spawn(name: string, at: V3, params: Record<string, number> = {}, o: { direction?: V3; attach?: (out: V3) => boolean; delay?: number } = {}): VfxHandle | null {
@@ -226,7 +232,7 @@ export class FxDirector {
     const tnt = Math.max(0.5, e.tnt), at: V3 = [e.at[0], Math.max(0.5, e.at[1]), e.at[2]];
     const mid: V3 = [at[0], Math.max(1.2, at[1]), at[2]];
     if (e.what === 'tanker') {
-      this.spawn('blast.fuel-air', [at[0], 0.3, at[2]], { fuel: clamp(tnt * PETROL_PER_TNT, 40, 5000) });
+      this.spawn(this.vfx.has('take37.fireball') ? 'take37.fireball' : 'blast.fuel-air', [at[0], 0.3, at[2]], { fuel: clamp(tnt * PETROL_PER_TNT, 40, 5000) });
       this.spawn('take37.flash', [at[0], 1.5, at[2]], { tnt: clamp(tnt, 2, 800) });
     } else if (e.what === 'propane' || e.what === 'pump') {
       this.spawn('blast.vessel', mid, { tnt: clamp(tnt, 0.3, 200), hot: 1 });
