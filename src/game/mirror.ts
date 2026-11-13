@@ -30,7 +30,7 @@ export const MIRROR_COST = {
   /** a mesh bigger than this radius (m) is kept at any distance (ground, sky) */
   alwaysRadius: 120,
   /** the most meshes one mirror draws (the biggest in the picture by angular size stay) */
-  maxMeshes: 60,
+  maxMeshes: 150,
   /** the pool of candidate meshes near the car is rebuilt every this-many frames */
   poolEvery: 40,
   /** the mirror is redrawn only if its centre is inside this cone around the view direction (radians; the camera's half-diagonal with a margin) */
@@ -39,6 +39,8 @@ export const MIRROR_COST = {
   tint: [0.88, 0.92, 0.96] as [number, number, number],
   /** the mirror picture is linear scene light and the glass goes through the scene's tone mapping once more: the factor that makes the mirror as bright as the same things seen directly (measured: 1.0 is white, 0.15 matches the street) */
   exposure: 0.16,
+  /** where the mirror looks, for the seated driver (radians): outward from the car's axis, and down below the horizon */
+  aimYaw: 0.14, aimPitch: 0.06,
   /** particles and sprites in the mirror */
   particles: false,
 };
@@ -52,6 +54,8 @@ interface Mirror {
   id: string; mesh: BABYLON.Mesh; kind: 'door' | 'inner';
   /** in the car's frame: the centre of the glass, the normal (toward the driver), the plane's axes (across, up) and the extents of the glass along them */
   c: V3; n: V3; r: V3; u: V3; r0: number; r1: number; u0: number; u1: number;
+  /** the direction (car frame) the centre of the picture looks along: back, a little out and down */
+  T: V3;
   rtt: BABYLON.RenderTargetTexture; cam: BABYLON.FreeCamera; list: BABYLON.AbstractMesh[]; mat: BABYLON.StandardMaterial;
   /** time of the last redraw (ms) */
   last: number;
@@ -99,6 +103,10 @@ export class CabMirrors {
       else { let best: V3 = [0, 0, 0]; for (let i = 1; i + 1 < n3; i++) { const a = cross(sub(P[i]!, P[0]!), sub(P[i + 1]!, P[0]!)); if (Math.hypot(...a) > Math.hypot(...best)) best = a; } n = norm(best); }
       // toward the driver's eye
       if (dot(n, sub(POLICE_CAB.eye, c)) < 0) n = [-n[0], -n[1], -n[2]];
+      // the tilt of the glass: set so that the ray from the seated driver's eye through the middle of the glass goes back along the car, a little outward and a little down (onto the road behind), not up into the sky
+      const side = c[2] >= 0 ? 1 : -1, yaw = MIRROR_COST.aimYaw, pit = MIRROR_COST.aimPitch;
+      const T: V3 = [-Math.cos(yaw) * Math.cos(pit), -Math.sin(pit), side * Math.sin(yaw) * Math.cos(pit)];
+      n = norm(sub(T, norm(sub(c, POLICE_CAB.eye))));
       // the axes of the plane: up is the car's up taken into the plane, across follows from the left-handed camera (right = up x forward)
       let u = sub([0, 1, 0], scale(n, n[1])); u = norm(u);
       const r = norm(cross(u, n));
@@ -135,7 +143,7 @@ export class CabMirrors {
       mat.emissiveColor = new BABYLON.Color3(MIRROR_COST.tint[0] * MIRROR_COST.exposure, MIRROR_COST.tint[1] * MIRROR_COST.exposure, MIRROR_COST.tint[2] * MIRROR_COST.exposure); mat.emissiveTexture = rtt; mat.backFaceCulling = false; mat.fogEnabled = false;
       mat.maxSimultaneousLights = 0;
       g.material = mat; g.receiveShadows = false; g.alwaysSelectAsActiveMesh = false;
-      this.mirrors.push({ id: spec.id, mesh: g, kind: spec.kind, c, n, r, u, r0, r1, u0, u1, rtt, cam, list, mat, last: -1e9, done: new Set() });
+      this.mirrors.push({ id: spec.id, mesh: g, kind: spec.kind, c, n, r, u, T, r0, r1, u0, u1, rtt, cam, list, mat, last: -1e9, done: new Set() });
     }
     this.stats.meshes = this.mirrors.map(() => 0);
   }
@@ -167,8 +175,9 @@ export class CabMirrors {
   private redraw(m: Mirror, idx: number, root: BABYLON.TransformNode, q: BABYLON.Quaternion, E: BABYLON.Vector3, fwd: BABYLON.Vector3, f: number) {
     if (!m.mesh.isEnabled()) return;
     const cw = this.rot(q, m.c), C: V3 = [root.position.x + cw[0], root.position.y + cw[1], root.position.z + cw[2]];
-    const n = this.rot(q, m.n), r = this.rot(q, m.r), u = this.rot(q, m.u);
     const toM: V3 = [C[0] - E.x, C[1] - E.y, C[2] - E.z], dist = Math.hypot(...toM);
+    // the mirror is aimed from the eye as it is now (the driver sets it): the centre ray of the picture goes back along m.T
+    const n = norm(sub(this.rot(q, m.T), norm(toM))), up: V3 = [0, 1, 0], u = norm(sub(up, scale(n, n[1]))), r = norm(cross(u, n));
     // the mirror must face the eye and lie inside the view
     const h = -dot(toM, n); if (h < 0.03) return;
     if (dot(toM, [fwd.x, fwd.y, fwd.z]) < Math.cos(MIRROR_COST.viewCone) * dist) return;
