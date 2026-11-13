@@ -207,3 +207,14 @@ The helicopter is shot down and falls as a whole, the Mustang is level with it i
 - Whether the score of the scene depends on anything besides success (spectacle of the fall, time).
 - Voice lines and the director's reaction for this scene.
 - Weather and time of day of the airfield (the epilogue is a sunset).
+
+### Scene 3: what is borrowed and what is made (owner's decisions 2026-11-12)
+
+Borrowed from Ferret ("заимствовано из Феррета"; the owner: much comes from the air war samples, air traffic included):
+- the Mustang: library model `mdl-mustang` and the playable P-51D of `examples/airwar` (flight model `Aeroplane`, `Pilot`, guns and ballistics, zone damage, gunsight with lead marker, cockpit and chase cameras, HUD, input);
+- the air war of `examples/dunkirk/src/airwar.ts` (the same flight core, autopilot-flown aircraft, raids, ground guns) for the air traffic around the airfield, as far as the scene needs it;
+- the aeroplanes of the collection standing on the taxiway.
+
+Made for this game:
+- the Robinson R22 helicopter, not in the library (owner: "make it ourselves"): a model built in Blender from drawings and photos, and a helicopter flight and damage model on the engine's rotor blocks (`@ferret/physics-rotor`; no helicopter exists in `physics-vehicles` yet): main rotor, tail rotor, collective and cyclic, hits by zone (engine, tail boom, main rotor, cabin), a physical fall after loss of lift or of the tail rotor;
+- the airfield (runway, taxiway, hangars), the police car arrival, the jump of Emily to the wing, the fail and wrap conditions above.
