@@ -20,13 +20,18 @@ const br = await chromium.launch({ args: ['--use-angle=d3d11', '--force_high_per
 const low = (pid = 0) => { const r = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(here, 'low_priority.ps1'), '-procId', String(pid)], { encoding: 'utf8' }); console.log((r.stdout || '').trim()); };
 low(srv.pid); low(process.pid);   // the owner's rule: every process of the run at BelowNormal (the browser's processes too)
 // the owner's rule: one Playwright browser at a time, and it is closed (with the server) whatever happens: finally, and on a timeout of the whole run
-const stop = async () => { try { await br.close(); } catch { /* closed */ } try { spawnSync('taskkill', ['/T', '/F', '/PID', String(srv.pid)]); } catch { /* gone */ } };
+const stop = async () => { try { await Promise.race([br.close(), new Promise((r) => setTimeout(r, 15000))]); } catch { /* closed */ }
+  // whatever is left of this run's own browser (a child of this node process): killed by its PID
+  try { const o = spawnSync('powershell', ['-NoProfile', '-Command', `Get-CimInstance Win32_Process -Filter "ParentProcessId=${process.pid}" | Where-Object { $_.CommandLine -like '*ms-playwright*' } | ForEach-Object { $_.ProcessId }`], { encoding: 'utf8' }); for (const l of o.stdout.split(/\s+/).filter(Boolean)) spawnSync('taskkill', ['/T', '/F', '/PID', l]); } catch { /* gone */ }
+  try { spawnSync('taskkill', ['/T', '/F', '/PID', String(srv.pid)]); } catch { /* gone */ } };
 const guard = setTimeout(async () => { console.log('run timed out'); await stop(); process.exit(5); }, 30 * 60 * 1000);
 try {
   const pg = await br.newPage({ viewport: { width: 1600, height: 900 } });
   pg.on('pageerror', (e) => console.log('[pageerror]', String(e).slice(0, 300)));
   pg.setDefaultTimeout(600000);
-  await pg.goto(`http://localhost:${PORT}/?lite=1&auto=1&fresh=1`);
+  const HOUR = process.argv.find((a) => a.startsWith('--hour='))?.slice(7);   // time of day of the scene (hour), default as the game has it
+  await pg.goto(`http://localhost:${PORT}/?lite=1&auto=1&fresh=1&clean=1${HOUR ? '&hour=' + HOUR : ''}`);
+  await pg.addStyleTag({ content: '#hud, #hud *, #hud2, #hud2 * { visibility: hidden !important; }' });   // the frames show the car, not the interface (the game's HUD and the pause caption)
   await pg.waitForFunction(() => window.take37Ready || window.take37Error, null, { timeout: 900000 });
   console.log('renderer', JSON.stringify(await pg.evaluate(() => take37.renderer())), 'error', await pg.evaluate(() => window.take37Error ?? null));
   const shot = async (n) => { await pg.waitForTimeout(1500); await pg.screenshot({ path: `${OUT}/${n}.png` }); console.log('shot', n); };

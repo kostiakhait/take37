@@ -137,6 +137,7 @@ def fix_doors(B):
         mw = tr.matrix_world
         bad = [f for f in bm.faces if all(0.45 < (mw @ v.co).x < 0.66 and 0.70 < abs((mw @ v.co).y) < 0.92 and 1.0 < (mw @ v.co).z < 1.22 for v in f.verts)]
         bad += [f for f in bm.faces if f not in bad and all(0.74 < (mw @ v.co).x < 0.83 and 0.15 < abs((mw @ v.co).y) < 0.70 and 0.98 < (mw @ v.co).z < 1.07 for v in f.verts)]   # the handles
+        bad += [f for f in bm.faces if f not in bad and all(0.50 < (mw @ v.co).x < 0.62 and 0.58 < abs((mw @ v.co).y) < 0.78 and 1.04 < (mw @ v.co).z < 1.14 for v in f.verts)]   # a stub of the handle
         bmesh.ops.delete(bm, geom=bad, context='FACES')
         bm.to_mesh(tr.data)
         bm.free()
