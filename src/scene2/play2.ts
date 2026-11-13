@@ -9,6 +9,10 @@ import { MoleView } from '@dunkirk/mole';
 import { SkyDome } from '@dunkirk/sky';
 import { DuneView } from '@dunkirk/dunes';
 import { LADDER, fogDensity, waveList, windNow, type Weather } from '@dunkirk/weather';
+import { AssetCache, AssetStore, PersistentCache, detectBackend } from '@ferret/assets';
+import { AssetLibrary, LevelService, RuntimeAssets, defaultLibraryUrl, installPackages } from '@ferret/levels';
+import { SeaModel } from '@dunkirk/sea-model';
+import { FleetView2, layoutFleet } from './fleet2';
 import { MOLE, bed, deckHeight, tide, onMole } from './shore';
 
 /**
@@ -70,6 +74,20 @@ async function main() {
   };
   applyLook();
 
+  // ---- the library and the fleet (stage 2) ----
+  splash.set(0.3, 'The fleet');
+  const assets = new AssetCache(scene);
+  const levels = game.world.addService(new LevelService());
+  const mount = installPackages(levels, assets);
+  const store = new AssetStore({ cache: new PersistentCache(await detectBackend()), base: location.href });
+  const runtime = game.world.addService(new RuntimeAssets({ store, models: mount.assets, mount }));
+  const tierChoice = detectLevelTier({ override: q.get('tier'), screen: game.platform.screen() });
+  const lib = game.world.addService(new AssetLibrary({ store, mount, assets: runtime, policy: { allowUnsigned: true }, tier: tierChoice.tier }));
+  await lib.open(q.get('lib') ?? defaultLibraryUrl());
+  const seaModel = new SeaModel(waveList(weather, 3));
+  const fleet = new FleetView2(scene, lib, game.world, seaModel, layoutFleet(+(q.get('seed') ?? 37)));
+  const fleetBuilt = fleet.build((q.get('steamer') as 'end' | 'middle' | 'idle' | null) ?? 'end');
+
   // the observer camera of the stage (drag to look, W A S D, Q / E, Shift); the player's own controls are not part of the field
   const keys = new Set<string>();
   const fly = { p: [0, 1.8, -130] as V3, yaw: 0, pitch: 0, fov: 0.95, speed: 12 };
@@ -86,7 +104,7 @@ async function main() {
   engine.runRenderLoop(() => {
     const dt = Math.min(0.1, engine.getDeltaTime() / 1000);
     if (!paused) clock += dt;
-    const level = tide(clock, TIDE_PHASE);
+    const level = tide(clock, TIDE_PHASE); seaModel.level = level;
     const sp = (keys.has('shift') ? 4.5 : 1) * fly.speed * dt, cy = Math.cos(fly.yaw), sy = Math.sin(fly.yaw), cp = Math.cos(fly.pitch), spf = Math.sin(fly.pitch);
     const mv = (keys.has('w') ? 1 : 0) - (keys.has('s') ? 1 : 0), st = (keys.has('d') ? 1 : 0) - (keys.has('a') ? 1 : 0), ud = (keys.has('e') ? 1 : 0) - (keys.has('q') ? 1 : 0);
     const nx = fly.p[0] + (sy * cp * mv + cy * st) * sp, nz = fly.p[2] + (cy * cp * mv - sy * st) * sp, ny = fly.p[1] + (spf * mv + ud) * sp;
@@ -96,17 +114,18 @@ async function main() {
     const c = cam.globalPosition;
     dunes.update(c);
     skyDome.update(clock); sea.update(clock, level, c); beach.update(c, Math.min(2600, weather.visibility * 2.6 + 400)); beach.tick(c, level, clock);
+    fleet.update(clock, paused ? 0 : dt);
     game.world.advance(dt);
     scene.render();
   });
 
-  (globalThis as unknown as { __scene2: unknown }).__scene2 = { scene, engine, cam, beach, sea, mole, dunes, fly, MOLE, bed, tide,
+  (globalThis as unknown as { __scene2: unknown }).__scene2 = { scene, engine, cam, fleet, fleetBuilt, beach, sea, mole, dunes, fly, MOLE, bed, tide,
     setTime: (t: number) => { clock = t; }, pause: (p: boolean) => { paused = p; },
     free: (p: V3, t: V3, fov = 0.95) => { fly.p = [p[0], p[1], p[2]]; const d = [t[0] - p[0], t[1] - p[1], t[2] - p[2]]; fly.yaw = Math.atan2(d[0], d[2]); fly.pitch = Math.atan2(d[1], Math.hypot(d[0], d[2])); fly.fov = fov; },
     renderer: () => { try { const gl = (engine as unknown as { _gl: WebGLRenderingContext })._gl; const x = gl.getExtension('WEBGL_debug_renderer_info'); return x ? String(gl.getParameter(x.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER)); } catch { return '?'; } } };
   Object.assign(globalThis, { ferretGame: game, ferretReady: true });
   splash.set(1, 'Ready');
-  const warm = () => { if (beach.settled || performance.now() > 60000) splash.hide(); else requestAnimationFrame(warm); };
+  const warm = () => { if ((beach.settled && fleet.views.every(v => v.ready)) || performance.now() > 60000) splash.hide(); else requestAnimationFrame(warm); };
   warm();
 }
 main().catch(e => { console.error(e); (globalThis as unknown as { ferretError: string }).ferretError = String(e?.message ?? e); const t = document.getElementById('splashtxt'); if (t) t.textContent = 'Error: ' + (e?.message ?? e); });

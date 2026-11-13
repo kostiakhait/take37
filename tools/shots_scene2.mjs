@@ -40,6 +40,17 @@ try {
     await pg.screenshot({ path: `${OUT}/${v.name}.png` });
     report.shots.push(v.name);
   }
+  report.materials = await pg.evaluate(() => [...__scene2.fleet.materials]);
+  report.plans = await pg.evaluate(() => __scene2.fleet.plans.map((p) => `${p.id} ${p.livery.name} x${p.x.toFixed(0)} z${p.z.toFixed(0)} s${p.scale.toFixed(2)} trim${(p.trim * 57.3).toFixed(1)}`));
+  // the frame: 3 runs of 6 s on the player's start view and on a view over the fleet, unpaused (mean frame time and the slowest second)
+  report.frames = [];
+  for (const [n, p, t] of [['start', [0, 1.8, -130], [0, 4, 180]], ['fleet', [60, 14, 120], [-40, 4, 420]], ['start', [0, 1.8, -130], [0, 4, 180]]]) {
+    await pg.evaluate(([p, t]) => { __scene2.pause(false); __scene2.free(p, t, 0.95); }, [p, t]);
+    await pg.waitForTimeout(1500);
+    const r = await pg.evaluate(() => new Promise((res) => { const ts = []; let last = performance.now(); const f = () => { const n = performance.now(); ts.push(n - last); last = n; if (ts.length < 360 && n - ts.reduce((a, b) => a, 0) > 0) requestAnimationFrame(f); else res(ts); }; requestAnimationFrame(f); setTimeout(() => res(ts), 8000); }));
+    const mean = r.reduce((a, b) => a + b, 0) / r.length, sorted = [...r].sort((a, b) => a - b);
+    report.frames.push({ view: n, frames: r.length, meanMs: +mean.toFixed(1), p95Ms: +sorted[Math.floor(sorted.length * 0.95)].toFixed(1), maxMs: +sorted[sorted.length - 1].toFixed(1) });
+  }
   report.fps = await pg.evaluate(() => __scene2.engine.getFps());
 } finally {
   try { await br?.close(); } catch { /* none */ }
