@@ -92,6 +92,8 @@ function repaint(meshes: BABYLON.AbstractMesh[], lv: Livery, tag: string, kind: 
 export class FleetView2 {
   readonly views: View[] = [];
   readonly materials = new Set<string>();
+  /** called when a vessel's model is in and placed: the people module reads her deck off the meshes */
+  onModel?: (plan: VesselPlan, node: BABYLON.TransformNode, meshes: BABYLON.AbstractMesh[]) => void;
   constructor(readonly scene: BABYLON.Scene, private lib: AssetLibrary, private world: World, readonly sea: SeaModel, readonly plans: VesselPlan[]) { perspectiveOf(world, scene); }
 
   /** load every model once (the library caches) and then each instance */
@@ -120,6 +122,8 @@ export class FleetView2 {
     }
     this.pose(v, 0, 0);
     node.setEnabled(true); node.computeWorldMatrix(true);
+    for (const t of node.getChildTransformNodes(false)) t.computeWorldMatrix(true);
+    this.onModel?.(plan, node, meshes);
     const e = this.world.spawn('vessel_' + plan.id, { node, tags: ['vessel'] }); e.add(Perspective, { ladder: LADDER, color: POINT[plan.kind], fade: 0.5 }); v.ready = true;
   }
   /** float: the vessel's draught follows the swell and the tide under her length and beam, damped; she swings a little on her anchor */

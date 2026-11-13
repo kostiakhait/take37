@@ -95,11 +95,15 @@ export function buildPost(scene: BABYLON.Scene): Post {
   return { root, gate: { x: cx + hx, z: cz }, searchlight: sl };
 }
 
+/** the road's centre line as a function of t (0 at the gate, 1 at the mole's landward end), world x and z */
+export function roadAt(from: { x: number; z: number }): (t: number) => [number, number] {
+  const to = { x: MOLE.x - 1.6, z: MOLE.rampFrom - 4 };
+  return (t) => { const bend = Math.sin(t * Math.PI) * 7; return [from.x + (to.x - from.x) * t - bend * 0.6, from.z + (to.z - from.z) * t + bend]; };
+}
 /** the dirt road from the gate to the mole's landward end: a ribbon on the ground, ruts darker, the edges fade into the sand */
 export function buildRoad(scene: BABYLON.Scene, from: { x: number; z: number }): BABYLON.Mesh {
-  const to = { x: MOLE.x - 1.6, z: MOLE.rampFrom - 4 };
   const pts: Array<[number, number]> = [];
-  const mid = (t: number) => { const bend = Math.sin(t * Math.PI) * 7; return [from.x + (to.x - from.x) * t - bend * 0.6, from.z + (to.z - from.z) * t + bend] as [number, number]; };
+  const mid = roadAt(from);
   const N = 60; for (let i = 0; i <= N; i++) pts.push(mid(i / N));
   const pos: number[] = [], col: number[] = [], idx: number[] = [], nor: number[] = [];
   const W = 4.2, SEG = 7;           // the width and the cross-section's samples
