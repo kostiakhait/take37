@@ -20,12 +20,12 @@ import cab  # noqa: E402
 importlib.reload(cab)
 
 root = bpy.data.objects['CrownVic87']
-for nm in ('Interior', 'Dash', 'SteeringWheel', 'Equipment', 'PillarTrim', 'DoorCard_FL', 'DoorCard_FR', 'DoorCard_RL', 'DoorCard_RR'):
+for nm in ('Interior', 'Dash', 'SteeringWheel', 'Equipment', 'PillarTrim', 'DoorCard_FL', 'DoorCard_FR', 'DoorCard_RL', 'DoorCard_RR', 'Mirror_Inner', 'Mirror_Inner_Glass', 'Mirror_L', 'Mirror_R', 'Mirror_L_Glass', 'Mirror_R_Glass'):
     ob = bpy.data.objects.get(nm)
     if ob:
         bpy.data.objects.remove(ob, do_unlink=True)
 # the cabin's materials: new colours and library textures in place of the old ones
-REPL = ('interior', 'carpet', 'headliner', 'dash', 'seatcloth', 'gauges', 'radio', 'mirror')
+REPL = ('interior', 'carpet', 'headliner', 'dash', 'seatcloth', 'pad', 'gauges', 'radio', 'mirror')
 for k in REPL:
     old = bpy.data.materials.get('M_' + k)
     if old:
@@ -42,7 +42,7 @@ body = bpy.data.objects['Body']
 B.metres_uv(body, ('carpet', 'headliner'))
 B.build_interior(root)
 for o in root.children:
-    if o.name in ('Interior', 'Dash', 'SteeringWheel', 'Equipment', 'PillarTrim'):
+    if o.name in ('Interior', 'Dash', 'SteeringWheel', 'Equipment', 'PillarTrim', 'Mirror_Inner', 'Mirror_Inner_Glass'):
         o.parent = root
 for m in [m for m in bpy.data.materials if m.name.startswith('old_') or m.users == 0]:
     bpy.data.materials.remove(m)
@@ -85,7 +85,10 @@ if arg('--render'):
     sc.camera = co
     E = cab.EYE
     views = {
-        'sit': (E, Vector((1, 0, -0.04)), 0),
+        'sit': (E, Vector((1, 0, 0)), 0),
+        'sit12': (E, Vector((1, 0, -0.2126)), 0),
+        'hl60': (E, Vector((0.5, 0.866, -0.2126)), 0),
+        'hr60': (E, Vector((0.5, -0.866, -0.2126)), 0),
         'left': (E, Vector((1, 0.35, -0.04)), 0),
         'right': (E, Vector((1, -0.35, -0.04)), 0),
         'back': (E, Vector((-1, 0, 0.0)), 0),

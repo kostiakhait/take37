@@ -62,8 +62,8 @@ export function buildTanker(infos: NodeInfo[]): CarBuild {
  * The wheel is the node 'SteeringWheel': its origin is the hub on the column axis, it turns about `axis` (from the dash toward the driver).
  */
 export const POLICE_CAB = {
-  eye: [-0.15, 1.13, 0.37] as Vec3,
-  /** where the head goes when the driver looks back (C): toward the middle and up, over the bench's back; the eye itself sits 0.2 m in front of the head restraint, which fills a straight turn of the head (not yet used by view.ts) */
-  lookBackEye: [-0.10, 1.20, 0.10] as Vec3,
-  wheel: { node: 'SteeringWheel', hub: [0.25, 0.80, 0.37] as Vec3, axis: [-0.6691, 0.7431, 0] as Vec3, radius: 0.19, lock: 3.0 * Math.PI },
+  eye: [-0.15, 1.18, 0.37] as Vec3,
+  /** a fixed downward pitch of the cab camera that this cab is laid out for (radians; proposal: the wheel's rim top sits just under the line to the road and the cluster shows through the rim, as in the reference photographs; view.ts does not use it yet) */
+  pitch: 0.21,
+  wheel: { node: 'SteeringWheel', hub: [0.30, 0.86, 0.37] as Vec3, axis: [-0.9063, 0.4226, 0] as Vec3, radius: 0.195, lock: 3.0 * Math.PI },
 };
