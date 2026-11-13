@@ -159,3 +159,7 @@ No collapse of walls: house walls stay whole after blasts and impacts. Shop wind
 ### Sinking of ships (owner's decision 2026-11-12)
 
 Hybrid: a hit makes a breach, the engine's vessel physics (compartments, breaches, flooding, heel, capsize) counts the flooding, but accelerated so that a ship goes down in 20-40 s; heel, trim and capsizing follow from where it was hit. People on a tilting or sinking deck slide and fall overboard through Walkers. Destroyers do not sink: only fires and explosions break out on them. Not built yet: the mechanics of scene 2 are designed after its field and assets.
+
+### Falls of people (owner's decision 2026-11-12)
+
+People fall through the engine's character and animation modules: fall clips (the combat module's death clips by the side of the hit, retargeted), the position carried by Walkers (so a tilting or sinking deck slides them and drops them overboard), a ballistic body under the figure when a blast throws him with the falling pose blended in, and IK so the feet meet deck, mole and sand. A trial scene of falls (bullets from front, side, behind; overboard from a heeling deck; blast throw) is made first and shown to the owner; a physical ragdoll (joints on the Havok kernel) is made only if the clips do not convince. Mechanics of scene 2 are built after its field and assets.
