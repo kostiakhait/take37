@@ -13,7 +13,10 @@ import { AssetCache, AssetStore, PersistentCache, detectBackend } from '@ferret/
 import { AssetLibrary, LevelService, RuntimeAssets, defaultLibraryUrl, installPackages } from '@ferret/levels';
 import { SeaModel } from '@dunkirk/sea-model';
 import { FleetView2, layoutFleet } from './fleet2';
-import { MOLE, bed, deckHeight, tide, onMole } from './shore';
+import { CAGE, buildCage, cageMaterials } from './cage';
+import { buildPost, buildRoad } from './base';
+import { Grove, layoutGrove } from './grove';
+import { CAGE_Z, MOLE, bed, deckHeight, tide, onMole } from './shore';
 
 /**
  * Scene 2 of TAKE 37 (the secret base), the field. Stage 1: the beach, the sea with its surf and tide, the mole (250 m), the dunes, the weather ladder. The pieces are the
@@ -86,6 +89,13 @@ async function main() {
   await lib.open(q.get('lib') ?? defaultLibraryUrl());
   const seaModel = new SeaModel(waveList(weather, 3));
   const fleet = new FleetView2(scene, lib, game.world, seaModel, layoutFleet(+(q.get('seed') ?? 37)));
+  // the cages on the mole (one in the middle, one at the end), the villain's post, the road, the grove
+  const cageMats = cageMaterials(scene);
+  const cages = (['middle', 'end'] as const).map(k => { const c = buildCage(scene, 'cage_' + k, cageMats); c.position.set(-0.2, deckHeight(CAGE_Z[k]), CAGE_Z[k]); return c; });
+  const post = buildPost(scene);
+  const road = buildRoad(scene, { x: post.gate.x + 1.5, z: post.gate.z });
+  const grove = new Grove(scene, lib, layoutGrove());
+  const groveBuilt = grove.build();
   const fleetBuilt = fleet.build((q.get('steamer') as 'end' | 'middle' | 'idle' | null) ?? 'end');
 
   // the observer camera of the stage (drag to look, W A S D, Q / E, Shift); the player's own controls are not part of the field
@@ -119,13 +129,13 @@ async function main() {
     scene.render();
   });
 
-  (globalThis as unknown as { __scene2: unknown }).__scene2 = { scene, engine, cam, fleet, fleetBuilt, beach, sea, mole, dunes, fly, MOLE, bed, tide,
+  (globalThis as unknown as { __scene2: unknown }).__scene2 = { scene, engine, cam, fleet, fleetBuilt, cages, post, road, grove, groveBuilt, CAGE, beach, sea, mole, dunes, fly, MOLE, bed, tide,
     setTime: (t: number) => { clock = t; }, pause: (p: boolean) => { paused = p; },
     free: (p: V3, t: V3, fov = 0.95) => { fly.p = [p[0], p[1], p[2]]; const d = [t[0] - p[0], t[1] - p[1], t[2] - p[2]]; fly.yaw = Math.atan2(d[0], d[2]); fly.pitch = Math.atan2(d[1], Math.hypot(d[0], d[2])); fly.fov = fov; },
     renderer: () => { try { const gl = (engine as unknown as { _gl: WebGLRenderingContext })._gl; const x = gl.getExtension('WEBGL_debug_renderer_info'); return x ? String(gl.getParameter(x.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER)); } catch { return '?'; } } };
   Object.assign(globalThis, { ferretGame: game, ferretReady: true });
   splash.set(1, 'Ready');
-  const warm = () => { if ((beach.settled && fleet.views.every(v => v.ready)) || performance.now() > 60000) splash.hide(); else requestAnimationFrame(warm); };
+  const warm = () => { if ((beach.settled && fleet.views.every(v => v.ready) && grove.meshes.length > 0) || performance.now() > 60000) splash.hide(); else requestAnimationFrame(warm); };
   warm();
 }
 main().catch(e => { console.error(e); (globalThis as unknown as { ferretError: string }).ferretError = String(e?.message ?? e); const t = document.getElementById('splashtxt'); if (t) t.textContent = 'Error: ' + (e?.message ?? e); });

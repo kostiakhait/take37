@@ -44,11 +44,18 @@ export function profile(u: number): number {
 /** the height of the sand or of the sea bed at (x, z), m: the beach, the bed, and behind the foreshore the dunes */
 export function bed(x: number, z: number): number {
   const u = z + wobble(x), p = profile(u);
-  // scene 2: the dunes rise right behind the high-water line so that they are read from where the player starts (up to about 11 m)
-  if (u > -170) return p;
-  const ramp = smoothstep(-170, -270, u), swell = 0.5 + 0.5 * Math.sin(x * 0.006 + u * 0.004);
-  return p + ramp * (2.0 + 9.0 * fbm(x * 0.012, z * 0.012) * (0.6 + 0.4 * swell));
+  let h = p;
+  if (u <= -170) {
+    // scene 2: the dunes rise right behind the high-water line so that they are read from where the player starts (up to about 11 m)
+    const ramp = smoothstep(-170, -270, u), swell = 0.5 + 0.5 * Math.sin(x * 0.006 + u * 0.004);
+    h = p + ramp * (2.0 + 9.0 * fbm(x * 0.012, z * 0.012) * (0.6 + 0.4 * swell));
+  }
+  // the villain's post stands on a levelled pad in the dunes
+  const w = 1 - smoothstep(BASE.r, BASE.r + 24, Math.hypot(x - BASE.x, z - BASE.z));
+  return w > 0 ? h + (BASE.h - h) * w : h;
 }
+/** the base's pad: its centre on the sand above the high-water line (m), the flat radius and the pad's height above the mean sea level */
+export const BASE = { x: -80, z: -200, r: 30, h: 3.4 };
 
 /** the tide at game time t (s): m above the mean sea level; `phase` (radians) sets where in the cycle the game starts */
 export function tide(t: number, phase = 0): number { return TIDE.amplitude * Math.sin(2 * Math.PI * t / TIDE.period + phase); }
