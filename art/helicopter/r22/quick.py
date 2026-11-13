@@ -11,7 +11,12 @@ if src.endswith('.blend'):
 else:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.ops.import_scene.gltf(filepath=src)
-for hn in (arg('--hide', '') or '').split(','):
+    # the glb has the nose on +X: turn it into the build frame (nose -X, right +Y) so the view names mean the same for .blend and .glb
+    from mathutils import Matrix as _M
+    for o in [o for o in bpy.data.objects if o.parent is None]:
+        o.matrix_world = _M.Rotation(math.pi, 4, 'Z') @ o.matrix_world
+    bpy.context.view_layer.update()
+for hn in ((arg('--hide', '') or '') + ',Collider_*').split(','):
     for o in list(bpy.data.objects):
         if hn and (o.name == hn or (hn.endswith('*') and o.name.startswith(hn[:-1]))):
             o.hide_render = True
@@ -77,16 +82,17 @@ out = pathlib.Path(arg('--out')); out.parent.mkdir(parents=True, exist_ok=True)
 ctr = Vector([float(x) for x in (arg('--ctr', '0.7,0,1.4')).split(',')])
 for v in arg('--views', 'side').split(','):
     cd = cam.data
-    if v in ('side', 'sideL', 'top', 'front', 'back', 'topU'):
+    if v in ('side', 'sideL', 'top', 'front', 'back', 'topU', 'below'):
         cd.type = 'ORTHO'; cd.ortho_scale = float(arg('--scale', 10.5))
-        d = {'side': (0, -30, 0), 'sideL': (0, 30, 0), 'top': (0, 0, 40), 'topU': (0, 0, 40), 'front': (-30, 0, 0), 'back': (30, 0, 0)}[v]
+        d = {'side': (0, -30, 0), 'sideL': (0, 30, 0), 'top': (0, 0, 40), 'topU': (0, 0, 40), 'below': (0, 0, -40), 'front': (-30, 0, 0), 'back': (30, 0, 0)}[v]
         cam.location = ctr + Vector(d)
-        cam.rotation_euler = {'side': (math.radians(90), 0, 0), 'sideL': (math.radians(90), 0, math.radians(180)), 'topU': (0, 0, math.radians(-90)), 'top': (0, 0, 0), 'front': (math.radians(90), 0, math.radians(-90)), 'back': (math.radians(90), 0, math.radians(90))}[v]
+        cam.rotation_euler = {'side': (math.radians(90), 0, 0), 'sideL': (math.radians(90), 0, math.radians(180)), 'topU': (0, 0, math.radians(-90)), 'below': (math.radians(180), 0, 0), 'top': (0, 0, 0), 'front': (math.radians(90), 0, math.radians(-90)), 'back': (math.radians(90), 0, math.radians(90))}[v]
     else:
         cd.type = 'PERSP'; cd.lens = float(arg('--lens', 35))
-        a = {'three': (-1, -1, 0.5), 'rear3': (1, -1, 0.4), 'three_l': (-1, 1, 0.5), 'close': (-1, -1, 0.3)}[v]
+        a = {'three': (-1, -1, 0.5), 'rear3': (1, -1, 0.4), 'three_l': (-1, 1, 0.5), 'close': (-1, -1, 0.3), 'rear_r': (1, 1, 0.4), 'rear_l': (1, -1, 0.4), 'front_r': (-1, 1, 0.5), 'front_l': (-1, -1, 0.5), 'below_rear_r': (1, 1, -0.6), 'below_rear_l': (1, -1, -0.6), 'below_front': (-1, 0.8, -0.6)}[v]
         dist = float(arg('--dist', 11))
         cam.location = ctr + Vector(a).normalized() * dist
         cam.rotation_euler = (ctr - cam.location).to_track_quat('-Z', 'Y').to_euler()
+    g.hide_render = v.startswith('below')       # the ground plane would hide the belly
     sc.render.filepath = str(out) + '_' + v + '.png'
     bpy.ops.render.render(write_still=True)

@@ -203,6 +203,49 @@ def build_cowl(root, M):
     return out
 
 
+COWL_W = [(0.80, 0.46), (1.05, 0.45), (1.20, 0.37), (1.42, 0.24)]       # half width of the belly cowl round the engine
+COWL_BOT = [(0.80, 0.60), (0.92, 0.51), (1.20, 0.52), (1.42, 0.56)]
+COWL_TOP = [(0.80, 1.40), (1.00, 1.46), (1.42, 1.55)]                    # tops out inside the aft deck (its lower edge is the BT table in build_cowl), so no gap shows between them
+COWL_END = 1.42
+
+
+def cowl_half_width(x):
+    return crom(COWL_W, x)
+
+
+def build_cowl_belly(root, M, eng_x0, eng_zc):
+    """belly cowl: closes the engine bay from the cabin's back wall (x 0.80) to a domed rear end (x 1.42..1.47) on both sides and underneath, and merges into the aft deck above. The belly has an oblong opening
+    from x 0.94 to the rear, through which the muffler, the tail pipe, the sump and the lower part of the cooling-fan scroll show from below and behind (the engine sits low on the centre line, inside the cowl, the skids
+    and the aft cabin); the sides are closed"""
+    N = seg(32, 16)
+    N -= N % 8
+    xs = [0.80, 0.86, 0.92, 1.00, 1.08, 1.16, 1.24, 1.32, 1.38, COWL_END]
+    rings = []
+
+    def ring(x, k=1.0):
+        w, t, b = crom(COWL_W, x if x <= COWL_END else COWL_END), crom(COWL_TOP, min(x, COWL_END)), crom(COWL_BOT, min(x, COWL_END))
+        zc, h = (t + b) / 2, (t - b) / 2
+        return [(x, k * w * sgnpow(math.sin(2 * math.pi * j / N), 0.9), zc + k * h * sgnpow(math.cos(2 * math.pi * j / N), 0.6 if math.cos(2 * math.pi * j / N) > 0 else 0.9)) for j in range(N)]
+    for x in xs:
+        rings.append(ring(x))
+    for k in (0.8, 0.5, 0.2):                   # the domed rear end
+        rings.append(ring(COWL_END + 0.05 * (1 - k * k), k))
+    Pt = np.array(rings)
+    UV = kit.arc_uv(Pt, 0.5, 1.0)
+
+    def cls(k, j):
+        ph = 360.0 * (j + 0.5) / N
+        a = ph if ph < 180 else 360 - ph
+        xm = Pt[k:k + 2, :, 0].mean()
+        if a > 150 and xm >= 0.94:              # belly opening
+            return None
+        return ('cowl', 1 if a > 118 else 0)
+    bms, vm = kit.loft_grid(Pt, UV, cls)
+    b = bms['cowl']
+    kit.bm_solidify(b, 0.003, inner_mat=2)
+    return kit.from_bm('Cowl_Belly', b, [M['paint'], M['accent'], M['int_grey']], root)
+
+
 def boom_centre(x):
     return Vector((x, 0.0, 1.60 + max(0.0, x - 1.35) * 0.085))
 

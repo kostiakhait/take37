@@ -10,15 +10,18 @@ from .kit import seg, crom, sgnpow
 from .fuselage import boom_centre, boom_radius, cabin_point
 from .interior import rbox
 
+CROSS_REAR_X = 0.78                                 # rear skid cross tube (PH: the rear gear leg stands under the engine's front end)
+ENG_X0 = 0.97                                       # crankcase centre: the whole engine incl. fan lies at x 0.81..1.35, on the centre line, inside the skids (-1.65..1.41) and the belly cowl
+ENG_ZC = 0.84
 HUB_C = Vector((0.0, 0.0, P.HUB_Z - 0.06))          # centre of the teeter hinge
 TR_HUB = Vector((4.40, -0.215, 0.0))                # z filled from the boom centre line
 
 
 # ============================================================ skids
 def skid_profile(sgn):
-    """skid tube centre line: toe turned up, straight along the ground, heel turned up (x from the toe -1.65 to the heel 0.75)"""
+    """skid tube centre line: toe turned up, straight along the ground, heel turned up (x from the toe -1.65 to the heel 1.41)"""
     y = sgn * 0.925
-    return [(-1.65, y, 0.20), (-1.55, y, 0.10), (-1.40, y, 0.042), (0.55, y, 0.042), (0.68, y, 0.08), (0.75, y, 0.17)]
+    return [(-1.65, y, 0.20), (-1.55, y, 0.10), (-1.40, y, 0.042), (1.22, y, 0.042), (1.34, y, 0.08), (1.41, y, 0.17)]
 
 
 def cross_profile(x, sgn=1):
@@ -34,12 +37,12 @@ def build_skids(ctx):
         pts = kit.smooth_poly(skid_profile(sgn), 5)
         kit.bm_tube(bm, pts, 0.036, n=14, mat_idx=0)
         # skid shoe: flat wear strip under the tube, heel and toe caps
-        kit.bm_box(bm, (-0.45, sgn * 0.925, 0.006), (1.90, 0.06, 0.012), mat_idx=1)
+        kit.bm_box(bm, (-0.10, sgn * 0.925, 0.006), (2.60, 0.06, 0.012), mat_idx=1)
         # step plate on the skid at the door: a bracket tube and a flat tread with a grip pattern in the mesh
         ob = kit.from_bm('Skid_' + side, bm, [M['skid'], M['alu']], root)
         kit.tag(ob, 'Zone_Skids', 'intact', detach='part')
         out['skid_' + side] = ob
-    for nm, x in (('Cross_Front', -0.77), ('Cross_Rear', 0.50)):
+    for nm, x in (('Cross_Front', -0.77), ('Cross_Rear', CROSS_REAR_X)):
         bm = bmesh.new()
         pts = kit.smooth_poly(list(reversed(cross_profile(x, -1))) + cross_profile(x, 1)[1:], 4)
         kit.bm_tube(bm, pts, 0.0285, n=12, mat_idx=0)
@@ -63,9 +66,9 @@ def build_skids(ctx):
     # ground handling wheels: stub axles on the rear cross tube, wheels folded up beside the belly
     for side, sgn in (('R', 1), ('L', -1)):
         bm = bmesh.new()
-        kit.bm_cyl(bm, (0.50, sgn * 0.30, 0.50), (0.50, sgn * 0.37, 0.50), 0.014, 0.014, n=8, mat_idx=0)
-        kit.bm_cyl(bm, (0.50, sgn * 0.38, 0.50), (0.50, sgn * 0.45, 0.50), 0.075, 0.075, n=int(18), mat_idx=1)
-        kit.bm_cyl(bm, (0.50, sgn * 0.45, 0.50), (0.50, sgn * 0.452, 0.50), 0.04, 0.04, n=12, mat_idx=2)
+        kit.bm_cyl(bm, (CROSS_REAR_X, sgn * 0.30, 0.50), (CROSS_REAR_X, sgn * 0.37, 0.50), 0.014, 0.014, n=8, mat_idx=0)
+        kit.bm_cyl(bm, (CROSS_REAR_X, sgn * 0.38, 0.50), (CROSS_REAR_X, sgn * 0.45, 0.50), 0.075, 0.075, n=int(18), mat_idx=1)
+        kit.bm_cyl(bm, (CROSS_REAR_X, sgn * 0.45, 0.50), (CROSS_REAR_X, sgn * 0.452, 0.50), 0.04, 0.04, n=12, mat_idx=2)
         ob = kit.from_bm('GroundWheel_' + side, bm, [M['steel'], M['rubber'], M['alu']], root)
         kit.tag(ob, 'Zone_Skids', 'intact', detach='part')
         out['wheel_' + side] = ob
@@ -85,74 +88,74 @@ def fins(bm, p0, p1, r, n_fin=7, mat_idx=0, r_fin=1.28):
 
 
 def build_engine(ctx):
-    """Lycoming O-360 (Beta II; the standard R22 has the O-320): horizontally opposed four, crank axis fore-aft (the fan drum on the rear end, as seen in the photographs), vee-belt
-    sheave on the front, with its mount tubes, exhaust, carburettor, magnetos, oil sump, hoses."""
+    """Lycoming O-360 (Beta II; the standard R22 has the O-320): horizontally opposed four, crank axis fore-aft, on the centre line behind the cabin's back wall, under the mast fairing, inside the belly cowl
+    (fuselage.build_cowl_belly) and inside the skid footprint; the cooling-fan drum on the rear end shows through the round opening in the cowl's rear plate, vee-belt sheave on the front, with its mount tubes,
+    exhaust (muffler and tail pipe show through the cowl's belly opening), carburettor, magnetos, oil sump, hoses."""
     root, M = ctx['root'], ctx['M']
     out = {}
-    x0 = 1.18      # crankcase centre
-    zc = 0.84
+    x0 = ENG_X0     # crankcase centre
+    zc = ENG_ZC
     bm = bmesh.new()
-    rbox(bm, (x0, 0, zc), (0.38, 0.30, 0.26), 0.04, 0)                           # crankcase
-    rbox(bm, (x0 + 0.02, 0, zc - 0.17), (0.30, 0.26, 0.09), 0.02, 0)             # oil sump
-    rbox(bm, (x0 + 0.24, 0, zc + 0.02), (0.14, 0.26, 0.20), 0.03, 0)             # accessory case
+    rbox(bm, (x0, 0, zc), (0.32, 0.28, 0.26), 0.04, 0)                           # crankcase
+    rbox(bm, (x0 + 0.02, 0, zc - 0.17), (0.26, 0.24, 0.09), 0.02, 0)             # oil sump
+    rbox(bm, (x0 + 0.19, 0, zc + 0.02), (0.12, 0.24, 0.20), 0.03, 0)             # accessory case
     for sgn in (1, -1):
-        for dx in (-0.10, 0.12):
+        for dx in (-0.08, 0.10):
             xx = x0 + dx
-            fins(bm, (xx, sgn * 0.14, zc), (xx, sgn * 0.33, zc), 0.058, 7, 0)       # barrel with cooling fins
-            kit.bm_cyl(bm, (xx, sgn * 0.33, zc), (xx, sgn * 0.40, zc), 0.07, 0.065, n=16, mat_idx=0)   # head
-            rbox(bm, (xx, sgn * 0.37, zc + 0.07), (0.09, 0.05, 0.045), 0.01, 1)      # rocker cover
-            kit.bm_cyl(bm, (xx + 0.06, sgn * 0.31, zc + 0.03), (xx + 0.06, sgn * 0.19, zc + 0.04), 0.008, 0.008, n=6, mat_idx=2)   # push-rod tube
-            kit.bm_cyl(bm, (xx, sgn * 0.38, zc - 0.07), (xx, sgn * 0.38, zc - 0.20), 0.022, 0.022, n=8, mat_idx=3)               # exhaust port stub
+            fins(bm, (xx, sgn * 0.14, zc), (xx, sgn * 0.30, zc), 0.058, 7, 0)       # barrel with cooling fins
+            kit.bm_cyl(bm, (xx, sgn * 0.30, zc), (xx, sgn * 0.37, zc), 0.07, 0.065, n=16, mat_idx=0)   # head
+            rbox(bm, (xx, sgn * 0.34, zc + 0.07), (0.09, 0.05, 0.045), 0.01, 1)      # rocker cover
+            kit.bm_cyl(bm, (xx + 0.06, sgn * 0.28, zc + 0.03), (xx + 0.06, sgn * 0.19, zc + 0.04), 0.008, 0.008, n=6, mat_idx=2)   # push-rod tube
+            kit.bm_cyl(bm, (xx, sgn * 0.35, zc - 0.07), (xx, sgn * 0.35, zc - 0.20), 0.022, 0.022, n=8, mat_idx=3)               # exhaust port stub
     ob = kit.from_bm('Engine_Block', bm, [M['engine'], M['engine_dark'], M['steel'], M['exhaust']], root)
     kit.tag(ob, 'Zone_Engine', 'intact', detach='part')
     out['block'] = ob
     # cooling fan drum on the rear end, vee-belt sheave on the front
     bm = bmesh.new()
-    kit.bm_cyl(bm, (x0 + 0.31, 0, zc), (x0 + 0.50, 0, zc), 0.26, 0.26, n=32, mat_idx=0)
-    kit.bm_cyl(bm, (x0 + 0.50, 0, zc), (x0 + 0.51, 0, zc), 0.20, 0.20, n=28, mat_idx=1)
+    kit.bm_cyl(bm, (x0 + 0.24, 0, zc), (x0 + 0.37, 0, zc), 0.24, 0.24, n=32, mat_idx=0)
+    kit.bm_cyl(bm, (x0 + 0.37, 0, zc), (x0 + 0.38, 0, zc), 0.19, 0.19, n=28, mat_idx=1)
     for i in range(seg(12, 6)):
         a = 2 * math.pi * i / seg(12, 6)
-        kit.bm_cyl(bm, (x0 + 0.505, math.cos(a) * 0.04, zc + math.sin(a) * 0.04), (x0 + 0.51, math.cos(a) * 0.19, zc + math.sin(a) * 0.19), 0.004, 0.004, n=4, mat_idx=2)
+        kit.bm_cyl(bm, (x0 + 0.375, math.cos(a) * 0.04, zc + math.sin(a) * 0.04), (x0 + 0.38, math.cos(a) * 0.19, zc + math.sin(a) * 0.19), 0.004, 0.004, n=4, mat_idx=2)
     ob = kit.from_bm('Engine_FanDrum', bm, [M['engine_dark'], M['steel_dark'], M['steel']], root)
     kit.tag(ob, 'Zone_Engine', 'intact', detach='part')
     out['fan'] = ob
     # lower sheave (front) and the 4 vee-belts running up to the upper sheave in the cowl; main-rotor drive shaft forward to the transmission
     bm = bmesh.new()
-    xs = x0 - 0.30
-    kit.bm_cyl(bm, (xs, 0, zc), (xs + 0.11, 0, zc), 0.15, 0.15, n=28, mat_idx=0)
+    xs = x0 - 0.11
+    kit.bm_cyl(bm, (xs, 0, zc), (xs + 0.07, 0, zc), 0.15, 0.15, n=28, mat_idx=0)
     zu = 1.45
-    kit.bm_cyl(bm, (xs + 0.0, 0, zu), (xs + 0.11, 0, zu), 0.095, 0.095, n=24, mat_idx=0)
+    kit.bm_cyl(bm, (xs + 0.0, 0, zu), (xs + 0.07, 0, zu), 0.095, 0.095, n=24, mat_idx=0)
     for i in range(4):
-        xx = xs + 0.02 + i * 0.022
+        xx = xs + 0.012 + i * 0.016
         for sgn in (1, -1):
-            kit.bm_box(bm, (xx, sgn * 0.12, (zc + zu) / 2), (0.016, 0.014, zu - zc), mat_idx=1)
-        kit.bm_cyl(bm, (xx - 0.008, 0, zc - 0.15), (xx + 0.008, 0, zc - 0.15), 0.0, 0.0, n=3, mat_idx=1) if False else None
+            kit.bm_box(bm, (xx, sgn * 0.12, (zc + zu) / 2), (0.012, 0.014, zu - zc), mat_idx=1)
     kit.bm_cyl(bm, (xs - 0.55, 0, zu), (xs, 0, zu), 0.025, 0.025, n=10, mat_idx=2)       # drive shaft to the main transmission
     ob = kit.from_bm('Engine_Belts', bm, [M['steel_dark'], M['belt_drive'], M['steel']], root)
     kit.tag(ob, 'Zone_Engine', 'intact', detach='part')
     out['belts'] = ob
-    # exhaust: two stubs down into a muffler under the engine, tail pipe out to the rear on the right
+    # exhaust: two stubs down into a muffler under the engine, tail pipe out to the rear (its end shows through the cowl's belly opening)
     bm = bmesh.new()
     for sgn in (1, -1):
-        for dx in (-0.10, 0.12):
-            kit.bm_tube(bm, kit.smooth_poly([(x0 + dx, sgn * 0.38, zc - 0.20), (x0 + dx, sgn * 0.40, zc - 0.28), (x0 + 0.02, sgn * 0.22, 0.58)], 4), 0.020, n=10, mat_idx=0)
-    rbox(bm, (x0 + 0.05, 0, 0.52), (0.40, 0.26, 0.10), 0.03, 0)
-    kit.bm_tube(bm, kit.smooth_poly([(x0 + 0.20, 0.08, 0.50), (x0 + 0.38, 0.16, 0.46), (x0 + 0.58, 0.22, 0.52)], 4), 0.028, n=12, mat_idx=0)
+        for dx in (-0.08, 0.10):
+            kit.bm_tube(bm, kit.smooth_poly([(x0 + dx, sgn * 0.35, zc - 0.20), (x0 + dx, sgn * 0.36, zc - 0.26), (x0 + 0.10, sgn * 0.20, 0.585)], 4), 0.020, n=10, mat_idx=0)
+    rbox(bm, (x0 + 0.10, 0, 0.585), (0.24, 0.24, 0.09), 0.03, 0)
+    kit.bm_tube(bm, kit.smooth_poly([(x0 + 0.18, 0.06, 0.56), (x0 + 0.28, 0.10, 0.52), (x0 + 0.39, 0.10, 0.50)], 4), 0.028, n=12, mat_idx=0)
     ob = kit.from_bm('Engine_Exhaust', bm, [M['exhaust']], root)
     kit.tag(ob, 'Zone_Engine', 'intact', detach='part')
     out['exhaust'] = ob
     # carburettor with its intake box below the sump, magnetos, hoses and wiring
     bm = bmesh.new()
-    rbox(bm, (x0 - 0.04, 0, zc - 0.28), (0.14, 0.12, 0.10), 0.02, 0)
-    rbox(bm, (x0 + 0.30, 0.10, zc + 0.12), (0.07, 0.07, 0.07), 0.015, 1)
-    rbox(bm, (x0 + 0.30, -0.10, zc + 0.12), (0.07, 0.07, 0.07), 0.015, 1)
+    rbox(bm, (x0 - 0.10, 0, zc - 0.28), (0.12, 0.12, 0.10), 0.02, 0)
+    rbox(bm, (x0 + 0.21, 0.10, zc + 0.12), (0.07, 0.07, 0.07), 0.015, 1)
+    rbox(bm, (x0 + 0.21, -0.10, zc + 0.12), (0.07, 0.07, 0.07), 0.015, 1)
     for sgn in (1, -1):
-        kit.bm_tube(bm, kit.smooth_poly([(x0 - 0.02, sgn * 0.04, zc - 0.28), (x0 - 0.02, sgn * 0.18, zc - 0.22), (x0 + 0.1, sgn * 0.36, zc - 0.12)], 4), 0.014, n=8, mat_idx=2)
-        kit.bm_tube(bm, kit.smooth_poly([(x0 + 0.30, sgn * 0.10, zc + 0.15), (x0 + 0.2, sgn * 0.25, zc + 0.20), (x0 + 0.02, sgn * 0.37, zc + 0.09)], 4), 0.006, n=6, mat_idx=2)
+        kit.bm_tube(bm, kit.smooth_poly([(x0 - 0.10, sgn * 0.04, zc - 0.28), (x0 - 0.08, sgn * 0.16, zc - 0.22), (x0 + 0.04, sgn * 0.33, zc - 0.12)], 4), 0.014, n=8, mat_idx=2)
+        kit.bm_tube(bm, kit.smooth_poly([(x0 + 0.21, sgn * 0.10, zc + 0.15), (x0 + 0.14, sgn * 0.22, zc + 0.20), (x0 + 0.02, sgn * 0.33, zc + 0.09)], 4), 0.006, n=6, mat_idx=2)
     ob = kit.from_bm('Engine_Accessories', bm, [M['engine_dark'], M['steel_dark'], M['hose']], root)
     kit.tag(ob, 'Zone_Engine', 'intact', detach='part')
     out['acc'] = ob
-    # mount: steel tube cage from the cabin's back wall to the engine and the boom root
+    # mount: steel tube cage from the cabin's back wall to the engine and the boom root (the old 0.84..1.55 layout squeezed to 0.86..1.34)
     bm = bmesh.new()
     tubes = [
         [(0.84, 0.36, 0.62), (1.06, 0.40, 0.74)], [(0.84, -0.36, 0.62), (1.06, -0.40, 0.74)], [(0.84, 0.36, 1.12), (1.20, 0.36, 1.02)], [(0.84, -0.36, 1.12), (1.20, -0.36, 1.02)],
@@ -161,8 +164,9 @@ def build_engine(ctx):
         [(1.48, 0.30, 0.62), (1.40, 0.20, 1.20)], [(1.48, -0.30, 0.62), (1.40, -0.20, 1.20)], [(0.84, 0.36, 0.62), (0.84, 0.36, 1.12)], [(0.84, -0.36, 0.62), (0.84, -0.36, 1.12)],
         [(0.84, 0.36, 0.62), (1.06, -0.40, 0.74)], [(0.84, -0.36, 0.62), (1.06, 0.40, 0.74)], [(1.06, 0.40, 0.74), (1.0, 0.1, 0.55)], [(1.06, -0.40, 0.74), (1.0, -0.1, 0.55)],
     ]
+    sq = lambda p: (0.86 + (p[0] - 0.84) * 0.676, p[1] * 0.90, p[2])  # noqa: E731
     for t in tubes:
-        kit.bm_tube(bm, t, 0.014, n=8, mat_idx=0)
+        kit.bm_tube(bm, [sq(p) for p in t], 0.014, n=8, mat_idx=0)
     ob = kit.from_bm('Engine_Mount', bm, [M['steel_dark']], root)
     kit.tag(ob, 'Zone_Engine', 'intact', detach='part')
     out['mount'] = ob

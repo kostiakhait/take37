@@ -57,6 +57,8 @@ def fuselage_build(ctx, fuselage):
     parts['doors'] = doors
     parts['pylon'] = fuselage.build_pylon(root, M)
     cowl = fuselage.build_cowl(root, M)
+    from r22 import mech
+    cowl['belly'] = fuselage.build_cowl_belly(root, M, mech.ENG_X0, mech.ENG_ZC)
     parts['cowl'] = cowl
     parts['boom_fwd'] = fuselage.build_boom(root, M, 1.34, 3.20, 'Boom_Fwd', end_cap=False)
     parts['boom_end'] = fuselage.build_boom(root, M, 3.20, 4.58, 'Boom_End')

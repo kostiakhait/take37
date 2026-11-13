@@ -112,7 +112,7 @@ async function main() {
   const cam = new BABYLON.ArcRotateCamera('cam', 0, 1, 10, new BABYLON.Vector3(0, 1.3, 0), scene); cam.minZ = 0.05; cam.maxZ = 2000; cam.wheelPrecision = 20; cam.attachControl(canvas, true);
   const presets: Record<string, [number, number, number, number, number, number, number]> = {   // alpha, beta, radius, target x, y, z, fov
     three: [-0.9, 1.25, 11.5, 0.6, 1.3, 0, 0.8], side: [Math.PI / 2 + 0.0, 1.5, 15, 0.8, 1.4, 0, 0.55], front: [0, 1.5, 15, 0, 1.4, 0, 0.55], rear: [Math.PI, 1.45, 15, 0, 1.4, 0, 0.55], top: [Math.PI / 2, 0.02, 18, 0.8, 1, 0, 0.6],
-    cockpit: [-1.2, 1.3, 2.4, 0.2, 1.1, 0, 1.0], rotor: [-0.8, 1.2, 3.0, 0, 2.6, 0, 0.9], tail: [-2.2, 1.35, 3.6, -4.4, 1.7, 0, 0.9], engine: [-2.4, 1.3, 3.2, -1.3, 0.9, 0, 0.9], close: [-0.65, 1.38, 5.2, 0.7, 1.2, 0, 0.9], walk: [-0.5, 1.45, 4.2, 0.3, 1.2, 0, 1.0],
+    cockpit: [-1.2, 1.3, 2.4, 0.2, 1.1, 0, 1.0], rotor: [-0.8, 1.2, 3.0, 0, 2.6, 0, 0.9], tail: [-2.2, 1.35, 3.6, -4.4, 1.7, 0, 0.9], engine: [-2.4, 1.3, 3.2, -1.1, 0.85, 0, 0.9], close: [-0.65, 1.38, 5.2, 0.7, 1.2, 0, 0.9], walk: [-0.5, 1.45, 4.2, 0.3, 1.2, 0, 1.0],
     interior: [-1.7, 1.1, 1.7, 0.1, 1.0, 0.1, 1.1], panel: [-3.0, 1.35, 1.3, 0.0, 1.0, 0.0, 0.9],
   };
   function setCam(name: string) { const p = presets[name] ?? presets.three!; cam.alpha = p[0]; cam.beta = p[1]; cam.radius = p[2]; cam.target.set(p[3], p[4], p[5]); cam.fov = p[6]; }
@@ -166,7 +166,7 @@ async function main() {
     nodePos: (nm: string) => { const n = node(nm); return n ? n.getAbsolutePosition().asArray() : null; },
   };
   scene.onBeforeRenderObservable.add(() => { if (hk) { hk.step(1 / 60); sync(); } });
-  if (q.get('pieces') === '1') await release(['Door_L', 'Door_R', 'TailGroup', 'Cowl_Panel_L', 'Cowl_Panel_R', 'Blade_A', 'TR_Blade_A', 'Glass_Windshield'], 2);
+  if (q.get('pieces') === '1') await release(['Door_L', 'Door_R', 'TailGroup', 'Cowl_Panel_L', 'Cowl_Panel_R', 'Cowl_Belly', 'Blade_A', 'TR_Blade_A', 'Glass_Windshield'], 2);
   if (q.get('fall') === '1') await fall();
   if (q.get('clean') === '1') document.body.classList.add('clean');
   probe.refreshRate = BABYLON.RenderTargetTexture.REFRESHRATE_RENDER_ONCE;

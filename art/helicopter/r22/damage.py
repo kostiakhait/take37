@@ -10,7 +10,8 @@ from mathutils import Vector, Matrix
 from . import kit, params as P
 from .kit import seg
 from .fuselage import cabin_point, boom_centre, boom_radius
-from .mech import blade_mesh, HUB_C, skid_profile, cross_profile
+from .mech import blade_mesh, HUB_C, skid_profile, cross_profile, CROSS_REAR_X, ENG_X0, ENG_ZC
+from .fuselage import cowl_half_width
 from .interior import rbox
 
 RS = np.random.RandomState(37)
@@ -150,11 +151,12 @@ def build(ctx):
     petals(bm, Vector((1.05, 0.0, 1.62)), Vector((0.1, 0.0, 1)), 0.1, 8, 1.7, 0.9, 9)
     put(kit.from_bm('Dmg_Torn_Cowl', bm, [M['torn'], M['charred']], root, smooth=False), g, 'Zone_Engine')
     g = group('Dmg_Engine_Burnt', 'Zone_Engine', note='soot on the engine bay and charred sleeve over the crankcase; Emit_Fire_Engine / Emit_Smoke_Engine sit here')
-    for i, (c, s_) in enumerate([((1.18, 0.0, 0.84), 0.9), ((1.45, 0.3, 0.8), 0.6), ((1.0, -0.2, 1.1), 0.6)]):
-        put(hole_decal(root, M, 'Dmg_Soot_Engine_%d' % i, c, (0, 1, 0), s_, 'soot', i), g, 'Zone_Engine')
-        put(hole_decal(root, M, 'Dmg_Soot_EngineL_%d' % i, (c[0], -c[1], c[2]), (0, -1, 0), s_, 'soot', i + 1), g, 'Zone_Engine')
+    for i, (c, s_) in enumerate([((ENG_X0, 0.0, ENG_ZC), 0.9), ((ENG_X0 + 0.22, 0.3, 0.80), 0.6), ((ENG_X0 + 0.02, -0.2, 1.1), 0.6)]):
+        cy = cowl_half_width(c[0]) + 0.004       # on the belly cowl's side wall
+        put(hole_decal(root, M, 'Dmg_Soot_Engine_%d' % i, (c[0], cy, c[2]), (0, 1, 0), s_, 'soot', i), g, 'Zone_Engine')
+        put(hole_decal(root, M, 'Dmg_Soot_EngineL_%d' % i, (c[0], -cy, c[2]), (0, -1, 0), s_, 'soot', i + 1), g, 'Zone_Engine')
     bm = bmesh.new()
-    rbox(bm, (1.18, 0.0, 0.84), (0.43, 0.34, 0.30), 0.04, 0)
+    rbox(bm, (ENG_X0, 0.0, ENG_ZC), (0.36, 0.32, 0.30), 0.04, 0)
     put(kit.from_bm('Dmg_Charred_Block', bm, [M['charred']], root), g, 'Zone_Engine')
 
     # ------------------------------------------------ Zone_TailBoom (the bent pose is TailGroup's bent_pose_euler_deg; here the torn edge at the break and the holes)
@@ -230,7 +232,7 @@ def build(ctx):
     kit.bm_tube(bm, kit.smooth_poly(bent, 5), 0.036, n=14, mat_idx=0)
     put(kit.from_bm('Dmg_Skid_R_Bent', bm, [M['skid']], root), g, 'Zone_Skids', detach='part')
     bm = bmesh.new()
-    cp = [(x, y, z + (0.16 if i == 1 else 0.10 if i < 3 else 0.0)) for i, (x, y, z) in enumerate(cross_profile(0.50, 1))]
+    cp = [(x, y, z + (0.16 if i == 1 else 0.10 if i < 3 else 0.0)) for i, (x, y, z) in enumerate(cross_profile(CROSS_REAR_X, 1))]
     kit.bm_tube(bm, kit.smooth_poly(cp, 4), 0.0285, n=12, mat_idx=0)
     put(kit.from_bm('Dmg_Cross_Rear_Bent', bm, [M['skid']], root), g, 'Zone_Skids')
     ctx['dmg_groups'] = groups

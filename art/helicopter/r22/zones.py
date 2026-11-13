@@ -92,7 +92,7 @@ def finish(ctx):
     com = kit.empty('CenterOfMass', (0.02, 0.0, 1.02), root, kind='SPHERE', size=0.08, mass_kg=P.EMPTY_KG, note='empty airframe CG near the mast axis (R22 CG range sits at the rotor axis); add 2 occupants + fuel in the game')
     # --- emitters (smoke / fire / sparks / fuel) for the destruction logic and effects
     em = kit.empty('Emitters', (0, 0, 0), root, kind='PLAIN_AXES', size=0.1)
-    E = [('Emit_Smoke_Engine', (1.25, 0.0, 1.05), 'Zone_Engine'), ('Emit_Fire_Engine', (1.20, 0.25, 0.80), 'Zone_Engine'), ('Emit_Fire_Exhaust', (1.60, 0.22, 0.52), 'Zone_Engine'),
+    E = [('Emit_Smoke_Engine', (1.12, 0.0, 1.05), 'Zone_Engine'), ('Emit_Fire_Engine', (1.05, 0.25, 0.80), 'Zone_Engine'), ('Emit_Fire_Exhaust', (1.36, 0.10, 0.50), 'Zone_Engine'),
          ('Emit_Smoke_TailBoom', (3.20, 0.0, z3), 'Zone_TailBoom'), ('Emit_Fuel_Leak_Main', (0.52, 0.34, 0.60), 'Zone_Fuel'), ('Emit_Fuel_Leak_Aux', (0.52, -0.34, 0.60), 'Zone_Fuel'),
          ('Emit_Fire_Fuel', (0.52, 0.34, 0.75), 'Zone_Fuel'), ('Emit_Sparks_Cabin', (-0.80, 0.0, 1.20), 'Zone_Cabin'), ('Emit_Glass_Windshield', (-1.20, 0.0, 1.30), 'Zone_Cabin'),
          ('Emit_Debris_MainRotor', tuple(Vector((0, 0, P.HUB_Z - 0.06))), 'Zone_MainRotor'), ('Emit_Sparks_TailRotor', tuple(ctx['tr_hub']), 'Zone_TailRotor'),
@@ -103,12 +103,12 @@ def finish(ctx):
     cg = kit.empty('Colliders', (0, 0, 0), root, kind='PLAIN_AXES', size=0.1, note='boxes/capsules, hide in the render; the whole fuselage is one rigid body (mass 399 kg empty + occupants)')
     cols = [
         box_collider(cg, M, 'Collider_Cabin', (-0.40, 0.0, 1.15), (2.50, 1.06, 1.20), note='cabin shell'),
-        box_collider(cg, M, 'Collider_Engine', (1.22, 0.0, 0.88), (0.80, 0.82, 0.70), note='engine bay + cowl'),
+        box_collider(cg, M, 'Collider_Engine', (1.11, 0.0, 0.93), (0.62, 0.92, 0.82), note='engine bay + cowl'),
         box_collider(cg, M, 'Collider_Pylon', (0.30, 0.0, 2.00), (0.95, 0.40, 0.90), note='mast fairing + hub'),
         cyl_collider(cg, M, 'Collider_Boom', (1.36, 0, boom_centre(1.36).z), (4.60, 0, boom_centre(4.60).z), 0.13),
         box_collider(cg, M, 'Collider_Fin', (4.45, 0.0, 1.85), (0.36, 0.06, 1.10), note='fin + tail guard'),
-        box_collider(cg, M, 'Collider_Skid_R', (-0.45, 0.925, 0.06), (2.40, 0.10, 0.12), note='skid right'),
-        box_collider(cg, M, 'Collider_Skid_L', (-0.45, -0.925, 0.06), (2.40, 0.10, 0.12), note='skid left'),
+        box_collider(cg, M, 'Collider_Skid_R', (-0.12, 0.925, 0.06), (3.06, 0.10, 0.12), note='skid right'),
+        box_collider(cg, M, 'Collider_Skid_L', (-0.12, -0.925, 0.06), (3.06, 0.10, 0.12), note='skid left'),
         box_collider(cg, M, 'Collider_Stab', (3.68, 0.0, 1.66), (0.22, 0.90, 0.05), note='stabiliser'),
     ]
     # --- soot/dirt layer: every mesh gets a Color attribute (white = clean, darker toward the belly and the engine bay, speckled)
