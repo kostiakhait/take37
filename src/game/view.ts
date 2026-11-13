@@ -10,6 +10,7 @@ import type { DebrisPiece } from '@ferret/destruction/debris';
 import { CAR_KINDS, SET_CAMERAS, type KindId, type SetCamera } from './config';
 import type { Take } from './take';
 import { POLICE_CAB } from './carspec';
+import { CabMirrors, MIRROR_COST } from './mirror';
 import { assignPaint, paintLook, whitePaint, paintOf, preparePaintInstances, paintInstance, PAINTED } from './paint';
 import type { Car, Debris, SimEvent, Prop } from './sim';
 import type { NodeInfo } from '@ferret/destruction/autoparts';
@@ -56,10 +57,14 @@ export class GameView {
   private pieceMats = new Map<string, BABYLON.Material>();
   shardStats = { sets: 0, pieces: 0, prototypes: 0 };
   view: ViewCamera = { mode: 'cab' };
+  /** the police cab's mirrors (mirror.ts): bound when the player's car is made, redrawn after the camera is placed */
+  readonly mirrors: CabMirrors;
 
   constructor(readonly scene: BABYLON.Scene, readonly camera: BABYLON.UniversalCamera, private propNodes: Map<string, BABYLON.TransformNode>, private stationNodes: Map<string, BABYLON.TransformNode>, shadow: BABYLON.ShadowGenerator | null = null) {
     this.vfx.registerAll(FULL_CATALOG as never);
     this.fx = new FxDirector(this.vfx);
+    this.mirrors = new CabMirrors(scene, camera);
+    if (new URLSearchParams(location.search).get('mirrors') === '0') MIRROR_COST.enabled = false;
     this.vfxView = new VfxBabylonView(scene, this.vfx, camera, { soft: false /* soft particles need a depth pass of the whole scene every frame (about a second a frame here) */, supports: ['particles', 'impostor', 'dot'], parts: { maxLights: 6, groundHeight: () => 0, candelaScale: 1 / 40000, maxLightIntensity: 0.55, steadyLights: true /* the six effect lights stay on (dark while unused): a light switched on or off changed every lit material's shader, and while the street's hundreds of shaders recompiled nothing of the street or the cars was drawn */ } } as never);
     const hemi = scene.lights.find((l) => l instanceof BABYLON.HemisphericLight) as BABYLON.HemisphericLight | undefined;
     if (hemi) { this.skyLight = hemi; this.skyBase = hemi.intensity; this.skyColor = hemi.diffuse.clone(); }
@@ -116,6 +121,7 @@ export class GameView {
     const full = ladderd && car.role !== 'traffic' ? null : this.instantiate(own, root), lod = car.role === 'player' && pack.lod ? this.instantiate(pack.lod, root) : null;
     const vis: CarVis = { car, root, full, lod, dam: null, hidden: new Set(), shown: 0, near: true, infoByName, spin: new Map(), dents: new Map(), frameNo: 0, damSrc: null, entity: null, fullRep: null, reduced: [] };
     if (ladderd) this.ladder(vis);
+    if (car.role === 'player' && car.kind === 'police' && full) this.mirrors.bind(root, full.nodes);
     return vis;
   }
 
@@ -263,6 +269,7 @@ export class GameView {
     this.fx.frame(take, dt, [cam.x, cam.y, cam.z]);
     // camera
     this.placeCamera(take, dt, head);
+    { const pv = this.cars.get(take.scene.player.id); if (pv) this.mirrors.update(pv.root, this.view.mode === 'cab'); }
     const t0 = performance.now();
     this.vfxView.draw({ cameraPosition: [cam.x, cam.y, cam.z], fov: this.camera.fov, heightPx: this.scene.getEngine().getRenderHeight(), tier: 'high', dt, night: 0 } as never);
     this.fx.endFrame(performance.now() - t0);
