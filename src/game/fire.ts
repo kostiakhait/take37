@@ -22,6 +22,8 @@ export const ENGULF_FLUX = 120e3;
 export const IGNITE_FLUX = 12.5e3, CAR_IGNITE_FLUX = 25e3, CAR_IGNITE_TIME = 5;
 /** the share of a burst tank's fuel that makes the blast wave (a BLEVE and vapour cloud blast: a few per cent of the combustion energy) */
 export const BLAST_YIELD = 0.02;
+/** the share of a blast's energy that can move a whole vehicle (the rest is heat, light, sound, shock round the body, the pieces that fly) */
+export const BODY_SHARE = 0.002;
 /** fireball radius of a burst of fuel mass M, kg (the usual 2.9 M^0.32 law) and its duration, s */
 export const fireballRadius = (m: number) => 2.9 * Math.pow(m, 0.32);
 export const fireballTime = (m: number) => 0.45 * Math.cbrt(m);
@@ -233,7 +235,8 @@ export class FireWorld {
       const p = c.veh.pos, r = Math.hypot(p[0] - at[0], p[1] - at[1], p[2] - at[2]);
       if (r < 1) continue;
       const b = blastAt(r, tnt), area = c.kind === 'tanker' ? 20 : 5.5;
-      const dv = Math.min(60, (b.impulse * area) / c.veh.mass);
+      // the blast cannot give a body more motion than the share of its energy that moves a whole body (a few per cent: most of it is heat, light, sound and the shock that goes round the body); a tank bursting in a truck's own frame is at 2 m, where the impulse formula alone would throw 40 tonnes at 60 m/s
+      const dv = Math.min(60, (b.impulse * area) / c.veh.mass, Math.sqrt((2 * BODY_SHARE * tnt * TNT_JOULES_PER_KG) / c.veh.mass));
       if (dv < 0.2) continue;
       const dir: Vec3 = [(p[0] - at[0]) / r, 0.35, (p[2] - at[2]) / r];
       const l = Math.hypot(...dir);
