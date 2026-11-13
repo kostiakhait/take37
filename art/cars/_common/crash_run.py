@@ -29,7 +29,7 @@ blend = arg('--blend', f'D:/temp/take37/claude/work/{car}_final.blend')
 kind, degree = arg('--type'), int(arg('--degree'))
 bpy.ops.wm.open_mainfile(filepath=blend)
 root = bpy.data.objects[geom.G.ROOT]
-crashkit.crash(root, crash_table.build(kind, degree, int(arg('--side', '1'))), log=lambda *a: print(*a, flush=True))
+crashkit.crash(root, crash_table.build(kind, degree, int(arg('--side', '1')), car), log=lambda *a: print(*a, flush=True))
 out = pathlib.Path(arg('--outdir'))
 stem = f'{geom.G.ROOT.lower()}_{kind}{"_R" if int(arg("--side", "1")) < 0 else ""}_d{degree}'
 cargen.export(root, out / f'{stem}.glb')

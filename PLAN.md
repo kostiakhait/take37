@@ -257,3 +257,13 @@ Emily (character look under owner's revision, nothing is done to looks): evaluat
 Scene 3: see the section above (airfield built, to-do list and open questions); the field agent is stopped.
 
 Still open for the owner: damage rework of the coupe defects (glass patches, soft metal, rear of front-hit cars) if wanted; mirrors go; scene 2 (claw fingers, jacket slivers, beach uniformity, lorry in surf, wire; real man-overboard event); scene 3 questions; helicopter flight and damage model (physics-rotor) not yet commissioned; delete the stray empty folder C:\frames_static.
+
+## Status 2026-11-13 (afternoon): all agent work accepted as is
+Owner's order: accept every agent's result as it stands, document everything, log, push, wait for instructions.
+- Damaged cars: see art/cars/DAMAGE_STATUS.md (coupe 27/27, hatchback 18, minivan 19, pickup 25, sedan 19, wagon 16 of 27). Remaining variants wait for the owner's word to resume the agents.
+- R22 helicopter: delivered (commits 3d2a3f9, 0c25eed, 89322d2); a toy-level model by the owner's judgement, not to be re-run for now; no flight/damage model commissioned.
+- Gas station: fire pass (2030b09) and canopy panels (1444aa9) accepted. Owner's fire notes (orange flames of different heights, stronger fire at the pumps, denser/taller smoke, dimmer base under smoke, soot on surfaces) were applied in the pass.
+- Scene 3 (airfield, branch scene3 0383fd2) and scene 2 (branch scene2 dd3a6c3): accepted in current form; open questions listed in the earlier scene-3 section.
+- Emily: assets/borrowed/emily_fab (Fab "Modern Female Character"); licence text not found, repo is public: owner to decide.
+- Cab mirrors (branch mirrors, e0fa130): inside mirror removed; side mirrors minimal (128 px, 5 Hz, 70 m, 150-mesh budget), aimed by the picture centre so the road, not the sky, is shown (frames D:/temp/take37/cab/mir8). Frame-time cost on a quiet machine still unmeasured; owner's wish to reuse an already rendered fragment not yet clarified.
+- Character appearance: under full revision by the owner; not touched.

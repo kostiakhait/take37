@@ -141,6 +141,27 @@ def extras(kind, d):
     return ex
 
 
+def far_end(kind, d):
+    """the end of the car opposite to the hit is not pristine either: a shallow broad crumple (the whole car stopped hard) with a ridge and a dented lid line"""
+    front = kind.startswith('front')
+    corner = kind.endswith('corner')
+    amp = _pick([0.04, 0.07, 0.11], d)
+    return dict(end='rear' if front else 'front', depth=_pick([0.08, 0.2, 0.34], d), length=_pick([1.0, 1.4, 1.7], d), t0=0.35 if corner else 0.0, width=0.9, base=0.45, zc=0.65, zh=0.5, zbase=0.5,
+                gamma=-0.15 if corner else 0.0, sag=_pick([0.01, 0.03, 0.06], d), bend=_pick([0.0, 0.05, 0.1], d), rise=_pick([0.01, 0.04, 0.08], d),
+                ridges=[ridge(0.4, 0.4, 0.14, -amp, 0.1), ridge(-0.4, 0.75, 0.14, 0.7 * amp, -0.1)])
+
+
+def crumple(x, ln, d, kind, direction=1, z=0.95):
+    """a lid crumples (see crashkit.crumple_op); strongest in the rollover, light for hits that do not reach it"""
+    k = {'roll': 1.0, 'front': 0.8, 'front_corner': 0.8, 'rear': 0.7, 'rear_corner': 0.7, 'side': 0.5}[kind]
+    amp = _pick([0.02, 0.05, 0.09], d) * k
+    return dict(op='crumple', x=x, len=ln, dir=direction, z=z, curl=_pick([8, 18, 30], d) * k, twist=_pick([3, 7, 12], d) * k, shrink=_pick([0.02, 0.05, 0.1], d) * k,
+                ridges=[(0.45, 0.17, amp, 0.35), (0.75, 0.15, -amp, -0.3), (0.95, 0.14, 0.7 * amp, 0.1)])
+
+
+PROFILE = {}
+
+
 def merge(a, b):
     out = copy.deepcopy(a)
     for k, v in b.items():
@@ -181,9 +202,15 @@ ZONES = {
 }
 
 
+ROLL_GLASS = dict(hit=['shattered', 'shattered', 'gone'])      # a rolled car has its glass broken from the first degree on: windows crazed, not just a flipped car
+
+
 def fragile(kind, d):
     z = ZONES[kind]
     L = lambda part, zone: LADDER[part][zone][d - 1]   # noqa: E731
+    if kind == 'roll':
+        LAD = dict(LADDER, glass=dict(LADDER['glass'], **ROLL_GLASS))
+        L = lambda part, zone: LAD[part][zone][d - 1]   # noqa: E731
     return dict(lamps={k: L('lamp', v) for k, v in z['lamps'].items()}, grille=L('grille', z['grille']),
                 bumper={k: (L('bumper', v[0]), v[1]) for k, v in z['bumper'].items()},
                 mirrors={k: L('mirror', v) for k, v in z['mirrors'].items()}, handles={k: L('handle', v) for k, v in z['handles'].items()},
@@ -222,9 +249,11 @@ def _mop(o):
         o['from'] = -o['from']
     if o.get('op') == 'hinge':
         o['alpha'] = -o.get('alpha', 0.0)
-    for k in ('yaw', 'fold_t'):
+    for k in ('yaw', 'fold_t', 'twist'):
         if k in o:
             o[k] = -o[k]
+    if o.get('op') == 'crumple':
+        o['ridges'] = [(a, b, c, -t) for (a, b, c, t) in o['ridges']]
     return o
 
 
@@ -282,9 +311,35 @@ def mirror(spec):
     return sp
 
 
-def build(kind, degree, side=1):
-    """the spec of crashkit.crash for a type and a degree: metal + extras + fragile states (side -1 = the mirror image of the left-hand row)"""
+def improve(spec, kind, d, prof):
+    """what every car gets beyond the coupe's first table: a crumpled far end for end hits, crumpled lids (no flat wings), lower popped lids in the rollover"""
+    if kind in ('front', 'front_corner', 'rear', 'rear_corner') and 'crush2' not in spec:
+        spec['crush2'] = far_end(kind, d)
+    parts = spec.setdefault('parts', {})
+    hx, hl = prof.get('hood_x', HOOD_HINGE), prof.get('hood_len', 1.5)
+    if kind == 'roll':      # lids stand less high; the crumple makes them read as buckled sheet
+        for o in parts.get('Hood', []):
+            if o['op'] == 'hinge' and o.get('r') == 0.01:
+                o['angle'] *= 0.55
+        for o in parts.get('Trunk', []):
+            if o['op'] == 'hinge' and o.get('r') == 0.01:
+                o['angle'] *= 0.55
+    parts.setdefault('Hood', []).append(crumple(hx, hl, d, kind))
+    if 'Trunk' in parts and prof.get('trunk_x', TRUNK_HINGE) is not None:
+        parts['Trunk'].append(crumple(prof.get('trunk_x', TRUNK_HINGE), prof.get('trunk_len', 1.0), d, kind, -1, 0.93))
+    return spec
+
+
+def build(kind, degree, side=1, car=None):
+    """the spec of crashkit.crash for a type and a degree: metal + extras + fragile states (side -1 = the mirror image of the left-hand row). car: name of a car with a profile in PROFILES"""
+    prof = PROFILES.get(car, {})
     spec = merge(metal(kind, degree), extras(kind, degree))
     spec['fragile'] = fragile(kind, degree)
     spec['seed'] = 7 + degree * 3
+    spec = improve(spec, kind, degree, prof)
+    if prof.get('adapt'):
+        spec = prof['adapt'](spec, kind, degree)
     return mirror(spec) if side < 0 else spec
+
+
+from crash_profiles import PROFILES  # noqa: E402  (per-car numbers: only where the picture asks)

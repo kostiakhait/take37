@@ -341,6 +341,23 @@ def hinge_op(P, op):
     return rot_about(P, o, axis, math.radians(op['angle']) * w)
 
 
+def crumple_op(P, op):
+    """a rigid lid (hood, tailgate) is crumpled instead of standing flat: it curls (rolled up progressively from its hinge), twists, narrows like a concertina and buckles along straight
+    slanted tent ridges. op: x (hinge), len (m, the lid's length from the hinge), dir (+1 lid lies ahead of the hinge, -1 behind), curl (deg at the free end), twist (deg at the free end,
+    left up / right down), shrink (0..1 narrowing of the free end), ridges [(s, lam, amp, theta)] (s = share of the length, amp m along z, theta rad slant)."""
+    d = op.get('dir', 1)
+    L = op.get('len', 1.2)
+    s = np.clip(d * (P[:, 0] - op['x']) / L, 0.0, 1.5)
+    o = np.array([op['x'], 0.0, op.get('z', 0.9)])
+    out = rot_about(P, o, (0, 1, 0), math.radians(op.get('curl', 0.0)) * d * s ** 1.6)
+    out[:, 2] += math.radians(op.get('twist', 0.0)) * out[:, 1] * s
+    out[:, 1] *= 1.0 - op.get('shrink', 0.0) * s ** 1.4
+    for (ss, lam, amp, th) in op.get('ridges', []):
+        w = ((s - ss) * L * math.cos(th) + out[:, 1] * math.sin(th)) / lam
+        out[:, 2] += amp * tent(w) * ssn(0.0, 0.25, s)
+    return out
+
+
 def swing_door(P, op, hx, hw, side):
     """a door on its front hinge: opens by `open` deg, sags (its rear edge drops) by `sag` deg, rolls about the hinge axis, drops by `drop` m"""
     hy = side * (hw - 0.03)
@@ -382,26 +399,61 @@ def bowls(P, items):
 
 
 def break_glass(ob, region, frac, seed, cells=170, tilt=7.0, mats=('M_glass',)):
-    """shatter the glass faces (M_glass only) of the region: Voronoi cells of the pane; frac < 1 = a cracked pane (that share of the cells is out, the rest stay as tilted shards with gaps between them),
+    """shatter the glass faces (M_glass only) of the region: Voronoi cells of the pane whose borders are CUT as straight cracks (bisector planes of neighbouring seeds, so the shards
+    have clean polygon outlines instead of staircases of mesh faces); frac < 1 = a cracked pane (that share of the cells is out, the rest stay as tilted shards with gaps between them),
     frac 1 = gone (only some cells on the frame stay as jagged teeth). The frame (seal, chrome) is never moved."""
     me = ob.data
     mw = ob.matrix_world
     bm = bmesh.new()
     bm.from_mesh(me)
     lay = bm.faces.layers.int.new('cell')
+    sel = bm.faces.layers.int.new('sel')
     bm.faces.ensure_lookup_table()
-    bm.faces.index_update()
     names = [m.name if m else '' for m in me.materials]
     fs = [f for f in bm.faces if names[f.material_index] in mats and region(mw @ f.calc_center_median())]
     if not fs:
         bm.free()
         return 0
+    for f in fs:
+        f[sel] = 1
+    cs = np.array([(mw @ f.calc_center_median())[:] for f in fs])
+    area = sum(f.calc_area() for f in fs)
+    rnd = random.Random(seed)
+    n = min(cells, max(3, int(area / 0.011)))
+    seeds = cs[[rnd.randrange(len(fs)) for _ in range(n)]]
+    # straight cracks: cut the pane along the bisector plane of every near pair of seeds
+    K = min(5, n - 1)
+    pairs = set()
+    for i in range(n):
+        d = np.linalg.norm(seeds - seeds[i], axis=1)
+        for j in np.argsort(d)[1:K + 1]:
+            pairs.add((min(i, int(j)), max(i, int(j))))
+    mwi = mw.inverted()
+    m3t = mw.to_3x3().transposed()
+
+    def nearest(c, ids):
+        return min(ids, key=lambda k: (c - seeds[k]) @ (c - seeds[k]))
+    for f, c in zip(fs, cs):                      # every face starts in the cell of its nearest seed
+        f[lay] = int(np.argmin(((seeds - c) ** 2).sum(axis=1)))
+    for i, j in sorted(pairs):
+        a, b = V3(seeds[i].tolist()), V3(seeds[j].tolist())
+        if (b - a).length < 1e-5:
+            continue
+        sub = [f for f in bm.faces if f.is_valid and f[sel] == 1 and f[lay] in (i, j)]     # the crack is cut only where the two cells meet: no grid of full-pane cuts
+        if not sub:
+            continue
+        geom = list(sub) + list({e for f in sub for e in f.edges}) + list({v for f in sub for v in f.verts})
+        bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=mwi @ ((a + b) * 0.5), plane_no=(m3t @ (b - a)).normalized())
+        for f in bm.faces:
+            if f.is_valid and f[sel] == 1 and f[lay] in (i, j):
+                f[lay] = nearest(np.array((mw @ f.calc_center_median())[:]), (i, j))
+    bm.faces.ensure_lookup_table()
+    bm.faces.index_update()
+    fs = [f for f in bm.faces if f.is_valid and f[sel] == 1]
     sset = set(f.index for f in fs)
     cs = np.array([(mw @ f.calc_center_median())[:] for f in fs])
-    rnd = random.Random(seed)
-    n = min(cells, max(3, len(fs) // 6))
-    seeds = cs[[rnd.randrange(len(fs)) for _ in range(n)]]
-    cell = np.argmin(((cs[:, None, :] - seeds[None, :, :]) ** 2).sum(axis=2), axis=1)
+    cell = np.argmin(((cs[:, None, :] - seeds[None, :, :]) ** 2).sum(axis=2), axis=1) if len(fs) * n < 4_000_000 else np.concatenate(
+        [np.argmin(((cs[k:k + 800, None, :] - seeds[None, :, :]) ** 2).sum(axis=2), axis=1) for k in range(0, len(fs), 800)])
     onframe = [any(len(e.link_faces) == 1 or any(lf.index not in sset for lf in e.link_faces) for e in f.edges) for f in fs]
     frame_cells = set(int(c) for c, o in zip(cell, onframe) if o)
     if frac >= 0.999:
@@ -437,6 +489,8 @@ def break_glass(ob, region, frac, seed, cells=170, tilt=7.0, mats=('M_glass',)):
         for v in vs:
             w = mw @ v.co
             v.co = inv @ (ctr + q @ (w - ctr) + off)
+    bm.faces.layers.int.remove(sel)
+    bm.faces.layers.int.remove(lay)
     bm.to_mesh(me)
     bm.free()
     me.update()
@@ -462,7 +516,7 @@ def tear(ob, center, radii, frac, seed, cells=24):
     cs = np.array(cs)
     rnd = random.Random(seed)
     seeds = cs[[rnd.randrange(len(fs)) for _ in range(cells)]]
-    cell = np.argmin(((cs[:, None, :] - seeds[None, :, :]) ** 2).sum(axis=2), axis=1)
+    cell = np.concatenate([np.argmin(((cs[i:i + 4000, None, :] - seeds[None, :, :]) ** 2).sum(axis=2), axis=1) for i in range(0, len(cs), 4000)])
     out = {k for k in range(cells) if rnd.random() < frac}
     kill = [f for f, c in zip(fs, cell) if int(c) in out]
     bmesh.ops.delete(bm, geom=kill, context='FACES')
@@ -505,7 +559,7 @@ def colors(ob, scorch, scrapes, tint=(1.0, 0.92, 0.85)):
     me.update()
 
 
-PAINTED = ('Body', 'Door_', 'Hood', 'Trunk', 'Tailgate', 'Bumper')
+PAINTED = ('Body', 'Door_', 'Hood', 'Trunk', 'Tailgate', 'Liftgate', 'Bumper')
 RIGID = ('Ends', 'Lamps_Head', 'Lamps_Park', 'Lamps_Tail', 'Lamps_Marker')
 
 
@@ -535,19 +589,38 @@ def crash(root, spec, log=print):
             z = z | (np.linalg.norm(pts - np.array(b['center']), axis=1) < b['r'] * 1.7)
         return z
     glass_fine = bool(spec.get('glass'))
-    dense = ['Body', 'Hood', 'Trunk', 'Tailgate', 'Bumper_F', 'Bumper_R', 'Trim', 'Glass', 'Interior'] + [n for n in obs if n.startswith(('Door_', 'Glass_', 'Trim_'))]
+    dense = ['Body', 'Hood', 'Trunk', 'Tailgate', 'Liftgate', 'Bumper_F', 'Bumper_R', 'Trim', 'Glass', 'Interior'] + [n for n in obs if n.startswith(('Door_', 'Glass_', 'Trim_'))]
     for nm in dense:
         if nm in obs:
             before = len(obs[nm].data.vertices)
-            subdivide(obs[nm], (lambda pts: np.ones(len(pts), bool)) if (glass_fine and nm.startswith('Glass')) else zone, 0.032 if nm.startswith('Glass') else spec.get('edge', 0.035))
+            subdivide(obs[nm], (lambda pts: np.ones(len(pts), bool)) if (glass_fine and nm.startswith('Glass')) else zone, spec.get('glass_edge', 0.032) if nm.startswith('Glass') else spec.get('edge', 0.035))
             log('CK subdivided', nm, before, '->', len(obs[nm].data.vertices))
+    from mathutils.kdtree import KDTree
+    bP, bN = world(obs['Body'])
+    kd = KDTree(len(bP))
+    for i, p in enumerate(bP):
+        kd.insert(p.tolist(), i)
+    kd.balance()
+
+    def skin_normals(P, N):
+        """strips and trim lie on the skin: they take the skin's normal there, so a ridge pushes strip and panel the same way (no strips floating off the dents)"""
+        N2 = N.copy()
+        for i, p in enumerate(P):
+            _, j, dist = kd.find(p.tolist())
+            if dist < 0.09:
+                N2[i] = bN[j]
+        return N2
     for nm, ob in obs.items():
         if nm in RIGID or nm == 'SteeringWheel':
             rigid_pieces(ob, fields, spec.get('hangs', []) if nm in RIGID else [])
         elif not nm.startswith('Wheel_'):
             P0 = world(ob)[0] if nm == 'Trim' else None
-            warp(ob, field_all)
-            if nm == 'Trim' and spec.get('roof'):
+            if nm == 'Trim' or nm.startswith('Trim_'):
+                P, N = world(ob)
+                put(ob, field_all(P, skin_normals(P, N)))
+            else:
+                warp(ob, field_all)
+            if nm == 'Trim':       # the aerial is a stiff rod: it rides the fields rigidly (never stretched by the skin normals)
                 ant = [c for c in components(ob) if P0[c][:, 2].max() > car.zroof + 0.2]
                 for c in ant:
                     rigid_subset(ob, P0, c, fields)
@@ -567,6 +640,8 @@ def crash(root, spec, log=print):
                     P = hinge_op(P, op)
                 elif k == 'door':
                     P = swing_door(P, op, op.get('hinge_x', hx), car.hw, 1 if nm.endswith('L') else -1)
+                elif k == 'crumple':
+                    P = crumple_op(P, op)
                 elif k == 'hang_bumper':
                     P = hang_bumper(P, op, car, nm.endswith('F'))
                 elif k == 'rigid':
@@ -592,14 +667,17 @@ def crash(root, spec, log=print):
             me.update()
     bpy.context.view_layer.update()
     # glass: region by name; door glass by its own node name
-    regions = {'wind': lambda p: p.x > 0.08 and abs(p.y) < 0.95, 'rear': lambda p: p.x < -1.0, 'opera': lambda p: -1.0 <= p.x <= 0.08 and abs(p.y) > 0.55}
+    regions = {'wind': lambda p: p.x > 0.08 and abs(p.y) < 0.95, 'rear': lambda p: p.x < -1.0, 'opera': lambda p: -1.0 <= p.x <= 0.08 and abs(p.y) > 0.55,
+               'quarter_L': lambda p: p.x < -1.0 and p.y > 0.0, 'quarter_R': lambda p: p.x < -1.0 and p.y < 0.0}
+    for rn, (rx0, rx1, ry0, ry1) in spec.get('regions', {}).items():       # a car with another glass layout names its panes by x range and |y| range
+        regions[rn] = (lambda p, rx0=rx0, rx1=rx1, ry0=ry0, ry1=ry1: rx0 <= p.x <= rx1 and ry0 <= abs(p.y) <= ry1)
     for gname, frac in spec.get('glass', {}).items():
         if gname in regions:
             ob, reg = obs.get('Glass'), regions[gname]
         else:
             ob, reg = obs.get(gname), (lambda p: True)
         if ob is not None:
-            n = break_glass(ob, reg, frac, seed + zlib.crc32(gname.encode()) % 97)
+            n = break_glass(ob, reg, frac, seed + zlib.crc32(gname.encode()) % 97, cells=spec.get('glass_cells', 170))
             log('CK glass', gname, 'removed faces', n)
     obs = mesh_obs(root)
     crashfragile.apply_fragile(obs, spec.get('fragile', {}), seed)

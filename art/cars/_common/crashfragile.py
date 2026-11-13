@@ -191,7 +191,7 @@ def grille_state(obs, state, seed):
 def mirror_state(obs, side, state):
     if state == 'ok':
         return
-    for nm in [n for n in obs if n.startswith('Trim_F')]:
+    for nm in [n for n in obs if n.startswith(('Trim_F', 'Trim_S'))]:
         ob = obs[nm]
         tab = comp_table(ob)
         seeds = [c for c in tab if 'M_mirror' in c['mats'] and (c['c'][1] > 0) == (side == 'L')]
@@ -215,7 +215,7 @@ def mirror_state(obs, side, state):
 def handle_state(obs, side, state):
     if state == 'ok':
         return
-    for nm in [n for n in obs if n.startswith('Trim_F')]:
+    for nm in [n for n in obs if n.startswith(('Trim_F', 'Trim_S'))]:
         ob = obs[nm]
         tab = comp_table(ob)
         seeds = [c for c in tab if 'M_chrome' in c['mats'] and (c['c'][1] > 0) == (side == 'L') and 0.08 < c['hi'][0] - c['lo'][0] < 0.25 and c['hi'][1] - c['lo'][1] < 0.03
@@ -238,7 +238,7 @@ def trim_state(obs, side, state):
     if state == 'ok':
         return
     sg = 1 if side == 'L' else -1
-    for nm in [n for n in obs if n == 'Trim' or n.startswith('Trim_F')]:
+    for nm in [n for n in obs if n == 'Trim' or n.startswith(('Trim_F', 'Trim_S'))]:
         ob = obs[nm]
         grp = [c for c in comp_table(ob) if (c['c'][1] > 0) == (side == 'L') and c['hi'][0] - c['lo'][0] > 0.7 and c['hi'][1] - c['lo'][1] < 0.06 and c['hi'][2] - c['lo'][2] < 0.5
                and abs(c['c'][1]) > 0.8 and ('M_chrome' in c['mats'] or 'M_black' in c['mats'] or 'M_bumper' in c['mats'])]
@@ -252,8 +252,10 @@ def trim_state(obs, side, state):
                 move_verts(ob, c['idx'], lambda X, front=front: ck.rot_about(X, front, (0, 0, 1), math.radians(-sg * 2.5)) + np.array([0.0, sg * 0.01, -0.03]))
 
 
-def plate_hangs(car, states):
+def plate_hangs(car, states, bumpers=None):
+    """bumpers: the bumper states per end; a plate whose bumper is gone is moved back onto the body (it never floats in the air where the bumper was)"""
     out = []
+    bumpers = bumpers or {}
     for key, c in car.plates.items():
         st = states.get(key, 'ok')
         if st == 'ok':
@@ -263,7 +265,59 @@ def plate_hangs(car, states):
             out.append(dict(center=tuple(c), r=0.25, pitch=sg * 14, roll=10, pivot=(0, 0, 0.07), move=(-sg * 0.07, 0.0, 0.0)))
         else:
             out.append(dict(center=tuple(c), r=0.25, pitch=sg * 36, roll=24, pivot=(0, 0, 0.07), move=(-sg * 0.12, 0.0, -0.10)))
+        if bumpers.get('F' if key == 'front' else 'R', ('ok', 0))[0] == 'missing':
+            mv = out[-1]['move']
+            out[-1]['move'] = (mv[0] + sg * 0.06, mv[1], mv[2] + 0.12)
     return out
+
+
+def plate_clear(obs):
+    """a plate never ends up cut by its bumper: if bumper metal stands in front of a plate (hanging, folded, pushed back bumpers), the plate is moved out until it clears it"""
+    ob = obs.get('Ends')
+    if ob is None:
+        return
+    pl = [c for c in comp_table(ob) if c['mats'] & {'M_plate', 'M_plate_ink'}]
+    groups = []
+    for c in pl:
+        for g in groups:
+            if np.linalg.norm(g['c'] - c['c']) < 0.35 and (g['c'][0] > 0) == (c['c'][0] > 0):
+                g['idx'] += c['idx']
+                g['lo'] = np.minimum(g['lo'], c['lo'])
+                g['hi'] = np.maximum(g['hi'], c['hi'])
+                break
+        else:
+            groups.append(dict(idx=list(c['idx']), c=c['c'], lo=c['lo'].copy(), hi=c['hi'].copy()))
+    for g in groups:
+        front = g['c'][0] > 0
+        bo = obs.get('Bumper_F' if front else 'Bumper_R')
+        if bo is None:
+            continue
+        B = ck.world(bo)[0]
+        c, hs = (g['lo'] + g['hi']) / 2, (g['hi'] - g['lo']) / 2
+        inbox = (np.abs(B[:, 1] - c[1]) < hs[1] + 0.03) & (np.abs(B[:, 2] - c[2]) < hs[2] + 0.03)
+        if not inbox.any():
+            continue
+        dx = (B[inbox, 0].max() + 0.02 - g['lo'][0]) if front else (g['hi'][0] - (B[inbox, 0].min() - 0.02))
+        if dx > 0:
+            move_verts(ob, g['idx'], lambda X, dx=dx, front=front: X + np.array([dx if front else -dx, 0.0, 0.0]))
+    # a plate never floats: if the metal behind it went elsewhere (crushed, torn off), it is carried back to the nearest piece of body or bumper
+    body = obs.get('Body')
+    if body is None:
+        return
+    Pb = np.concatenate([ck.world(o)[0] for o in (body, obs.get('Bumper_F'), obs.get('Bumper_R')) if o is not None])
+    for g in groups:
+        P = ck.world(ob)[0][g['idx']]
+        c = P.mean(axis=0)
+        front = g['c'][0] > 0
+        near = Pb[(np.abs(Pb[:, 1] - c[1]) < 0.4) & (np.abs(Pb[:, 2] - c[2]) < 0.45)]
+        if len(near) == 0:
+            near = Pb
+        d = np.linalg.norm(near - c, axis=1)
+        q = near[np.argmin(d)]
+        if d.min() > 0.10:
+            v = q - c
+            v = v / np.linalg.norm(v) * (d.min() - 0.03)
+            move_verts(ob, g['idx'], lambda X, v=v: X + v)
 
 
 def apply_fragile(obs, fr, seed):
@@ -276,6 +330,7 @@ def apply_fragile(obs, fr, seed):
         handle_state(obs, side, st)
     for side, st in fr.get('trim', {}).items():
         trim_state(obs, side, st)
+    plate_clear(obs)
 
 
 def resolve_fragile(spec, car):
@@ -293,5 +348,5 @@ def resolve_fragile(spec, car):
             spec.setdefault('parts', {})[nm] = [dict(op='hang_bumper', **{'from': frm}, **BUMPER_PRESETS[st])]
             c = ((car.nose if end == 'F' else car.tail), -frm * 0.45, 0.5)
             spec.setdefault('tears', []).append(dict(node=nm, center=c, radii=(0.2, 0.28, 0.15), frac=0.45 if st == 'hang' else 0.25, cells=10))
-    spec.setdefault('hangs', []).extend(plate_hangs(car, fr.get('plate', {})))
+    spec.setdefault('hangs', []).extend(plate_hangs(car, fr.get('plate', {}), fr.get('bumper', {})))
     return spec
