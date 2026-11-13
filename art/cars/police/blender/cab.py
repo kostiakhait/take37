@@ -11,7 +11,6 @@ Nodes added under the car root (existing nodes keep their names):
   SteeringWheel       rim, four spokes, the pad; origin at the hub on the column axis, turns about AXIS
   Equipment           the police radio rack, siren console, microphone, scanner
   PillarTrim          thin covers of the A, B, C pillars between the glass edges
-  Mirror_Inner        the inside mirror's frame and stalk; Mirror_Inner_Glass its flat glass (one face, normal out of the glass)
 Under each front door: Mirror_L / Mirror_R (chrome housing on a triangular base) and Mirror_L_Glass / Mirror_R_Glass; under each door DoorCard_xx.
 Blender frame: x forward, y left (the driver, +y), z up; origin on the ground at the middle of the wheelbase.
 """
@@ -425,22 +424,7 @@ def _glass(B, Mesh, name, centre, n, w, h, r, parent):
 def build_mirrors(B, Mesh, root):
     import bpy
     glass = bpy.data.objects.get('Glass')
-    # the inside mirror: hangs on a short stalk from the windscreen's top at the middle; 25 x 6 cm glass in a dark plastic frame
-    top = None
-    if glass is not None:
-        vs = [glass.matrix_world @ v.co for v in glass.data.vertices]
-        vs = [v for v in vs if v.x > 0.0 and abs(v.y) < 0.05 and v.z < 1.30]
-        top = max(vs, key=lambda v: v.z) if vs else None
-    top = top or V3((0.34, 0, 1.29))
-    c = top + V3((-0.075, 0, -0.065))
-    n = _aim(c, V3((-3.0, 0.0, 1.10)))
-    ex, ey, ez = frame_of(n)
-    m = Mesh()
-    m.rbox(c - ez * 0.016, (0.075, 0.27, 0.03), 0.014, 'black', (ex, ey, ez))
-    m.cyl(c - ez * 0.03, top + V3((-0.012, 0, -0.008)), 0.008, 'black', seg=10)
-    m.rbox(top + V3((-0.012, 0, -0.004)), (0.03, 0.05, 0.012), 0.004, 'black')
-    m.finish('Mirror_Inner', root, sharp=40)
-    _glass(B, Mesh, 'Mirror_Inner_Glass', c + ez * 0.0002, n, 0.25, 0.06, 0.012, root)
+    # (the inside mirror is not made: the owner removed it, only the two door mirrors show the road behind)
     # the outside mirrors: on each front door at the foot of the A-pillar, a triangular base on the door, a chrome rectangular housing about 15 x 10 cm
     for s, k in ((1, 'L'), (-1, 'R')):
         door = bpy.data.objects.get('Door_F' + k)

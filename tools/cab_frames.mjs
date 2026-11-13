@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const label = process.argv[2] ?? 'frames', DIST = 'D:/temp/take37/cab/dist', PORT = 4500, OUT = `D:/temp/take37/cab/${label}`;
+const label = process.argv[2] ?? 'frames', DIST = process.env.CAB_DIST ?? 'D:/temp/take37/cab/dist', PORT = +(process.env.CAB_PORT ?? 4500), OUT = `D:/temp/take37/cab/${label}`;
 fs.mkdirSync(OUT, { recursive: true });
 if (!process.argv.includes('--nobuild')) { const b = spawnSync('node', [path.join(here, 'build_play.mjs')], { env: { ...process.env, TAKE37_OUT: DIST }, encoding: 'utf8' }); console.log((b.stdout + b.stderr).trim().split('\n').slice(-2).join(' | ')); if (b.status !== 0) process.exit(3); }
 const srv = spawn('node', [path.join(here, 'serve_set.mjs'), String(PORT)], { env: { ...process.env, TAKE37_OUT: DIST }, stdio: 'ignore', windowsHide: true });

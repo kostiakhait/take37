@@ -65,11 +65,10 @@ export const POLICE_CAB = {
   eye: [-0.15, 1.18, 0.37] as Vec3,
   /** a fixed downward pitch of the cab camera that this cab is laid out for (radians; proposal: the wheel's rim top sits just under the line to the road and the cluster shows through the rim, as in the reference photographs; view.ts does not use it yet) */
   pitch: 0.21,
-  /** the three mirrors: the glass node of each (mirror.ts draws what is behind the car on it) and the kind (the size of its picture) */
+  /** the two door mirrors: the glass node of each (mirror.ts draws what is behind the car on it) and the kind (the size of its picture) */
   mirrors: [
     { id: 'L', glass: 'Mirror_L_Glass', kind: 'door' as const },
     { id: 'R', glass: 'Mirror_R_Glass', kind: 'door' as const },
-    { id: 'I', glass: 'Mirror_Inner_Glass', kind: 'inner' as const },
   ],
   wheel: { node: 'SteeringWheel', hub: [0.30, 0.86, 0.37] as Vec3, axis: [-0.9063, 0.4226, 0] as Vec3, radius: 0.195, lock: 3.0 * Math.PI },
 };
