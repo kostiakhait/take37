@@ -62,3 +62,10 @@ export async function makeup(png, { lip = [175, 18, 38], shadow = [205, 120, 95]
   }
   return sharp(out, { raw: f.info }).png().toBuffer()
 }
+
+/** the preset's lash card texture recoloured (rgb of the opaque part), the alpha untouched */
+export async function darkLashes(png, rgb, alpha = 1) {
+  const f = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true }), out = Buffer.from(f.data)
+  for (let i = 0; i < out.length; i += 4) { const lum = Math.max(0.5, Math.min(1.2, (f.data[i] + f.data[i + 1] + f.data[i + 2]) / 3 / 60)); for (let k = 0; k < 3; k++) out[i + k] = Math.min(255, rgb[k] * lum); out[i + 3] = out[i + 3] * alpha }
+  return sharp(out, { raw: f.info }).png().toBuffer()
+}

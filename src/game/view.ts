@@ -65,7 +65,7 @@ export class GameView {
     this.fx = new FxDirector(this.vfx);
     this.mirrors = new CabMirrors(scene, camera);
     if (new URLSearchParams(location.search).get('mirrors') === '0') MIRROR_COST.enabled = false;
-    this.vfxView = new VfxBabylonView(scene, this.vfx, camera, { soft: false /* soft particles need a depth pass of the whole scene every frame (about a second a frame here) */, supports: ['particles', 'impostor', 'dot'], parts: { maxLights: 6, groundHeight: () => 0, candelaScale: 1 / 40000, maxLightIntensity: 0.55, steadyLights: true /* the six effect lights stay on (dark while unused): a light switched on or off changed every lit material's shader, and while the street's hundreds of shaders recompiled nothing of the street or the cars was drawn */ } } as never);
+    this.vfxView = new VfxBabylonView(scene, this.vfx, camera, { soft: false /* soft particles need a depth pass of the whole scene every frame (about a second a frame here) */, supports: ['particles', 'impostor', 'dot'], parts: { maxLights: 6, groundHeight: () => 0, candelaScale: 1 / 40000, maxLightIntensity: 0.5, maxTotalIntensity: 0.85, steadyLights: true /* the six effect lights stay on (dark while unused): a light switched on or off changed every lit material's shader, and while the street's hundreds of shaders recompiled nothing of the street or the cars was drawn */ } } as never);
     const hemi = scene.lights.find((l) => l instanceof BABYLON.HemisphericLight) as BABYLON.HemisphericLight | undefined;
     if (hemi) { this.skyLight = hemi; this.skyBase = hemi.intensity; this.skyColor = hemi.diffuse.clone(); }
     // the effects' lights (up to six) must reach the street's materials: the default of a material is four lights in all

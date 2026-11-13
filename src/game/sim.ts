@@ -44,6 +44,8 @@ export type SimEvent =
   | { t: number; type: 'collapse'; id: string; at: Vec3; depth: number };
 
 const G = 9.81;
+/** the share of the energy of two meeting cars that the spin of one of them may hold after the hit (the rest is crushed metal, heat and the other motion) */
+const SPIN_SHARE = 0.4;
 /** energy that a prop of this kind absorbs at its base before it gives way, J (a cast-iron hydrant's bolts, a pole's section, a post's weld) */
 const PROP_CAPACITY: Record<string, number> = { Hydrant: 9000, UtilityPole: 40000, LampAcorn: 14000, TrafficLight: 16000, PhoneBooth: 4500, Meter: 1800, Mailbox: 2600 };
 
@@ -62,7 +64,8 @@ export class StreetGround implements RayCaster {
   cast(o: Vec3, d: Vec3, maxDistance: number): RayHit | null {
     if (d[1] > -1e-6) return null;
     const h = this.height(o[0], o[2]), t = (o[1] - h) / -d[1];
-    if (t < 0 || t > maxDistance) return null;
+    // a ray that starts under the floor (a car pushed down by a contact or thrown into the kerb) still finds the floor above it, at a negative distance: the springs and the hull push the car up out of it. Without this the car fell for ever, a few thousand metres, and was gone from the street
+    if (t < -1.5 || t > maxDistance) return null;
     return { distance: t, normal: [0, 1, 0], grip: Math.abs(o[2]) > this.road.walkTo + 6 ? 0.7 : 1 };
   }
 }
@@ -294,7 +297,9 @@ export class Sim {
     const ka = dot(cross(A.invInertia(cross(ra, n)), ra), n), kb = dot(cross(B.invInertia(cross(rb, n)), rb), n);
     if (vn < 0) {
       const restitution = 0.12, j = (-(1 + restitution) * vn) / (ia + ib + ka + kb), speed = -vn;
+      const keA = this.kinetic(A), keB = this.kinetic(B);
       A.applyImpulse(mul(n, -j), c.point); B.applyImpulse(mul(n, j), c.point);
+      this.limitSpin(A, keA + keB); this.limitSpin(B, keA + keB);
       if (speed > RESTING_SPEED) {
         out.a = this.strikeCar(a, { point: c.point, normal: mul(n, -1), speed, otherMass: B.mass, restitution });
         out.b = this.strikeCar(b, { point: c.point, normal: n, speed, otherMass: A.mass, restitution });
@@ -303,6 +308,16 @@ export class Sim {
     const total = ia + ib;
     A.pos = sub(A.pos, mul(n, (c.depth * ia) / total)); B.pos = add(B.pos, mul(n, (c.depth * ib) / total));
     return out;
+  }
+  /** kinetic energy of a car, J: translation and rotation */
+  private kinetic(v: Vehicle): number {
+    const wb = qRot(qConj(v.rot), v.angVel), I = v.inertia;
+    return 0.5 * v.mass * dot(v.vel, v.vel) + 0.5 * (I[0] * wb[0] * wb[0] + I[1] * wb[1] * wb[1] + I[2] * wb[2] * wb[2]);
+  }
+  /** a hit between rigid hulls puts all of an off-centre impulse into the spin; a real car crumples, and the work of that goes into the metal. The spin a car keeps after a hit holds at most this share of the two cars' energy before it */
+  private limitSpin(v: Vehicle, before: number) {
+    const wb = qRot(qConj(v.rot), v.angVel), I = v.inertia, er = 0.5 * (I[0] * wb[0] * wb[0] + I[1] * wb[1] * wb[1] + I[2] * wb[2] * wb[2]), budget = SPIN_SHARE * before;
+    if (er > budget && er > 0) v.angVel = mul(v.angVel, Math.sqrt(budget / er));
   }
   private afterStrike(c: Car, s: StrikeResult, other: string, speed: number) {
     for (const id of s.detached) this.emit({ t: this.t, type: 'detach', car: c.id, part: id, at: [...c.veh.pos] as Vec3 });

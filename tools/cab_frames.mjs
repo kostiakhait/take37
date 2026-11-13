@@ -36,10 +36,11 @@ try {
   console.log('renderer', JSON.stringify(await pg.evaluate(() => take37.renderer())), 'error', await pg.evaluate(() => window.take37Error ?? null));
   const shot = async (n) => { await pg.waitForTimeout(1500); await pg.screenshot({ path: `${OUT}/${n}.png` }); console.log('shot', n); };
   // the head: an extra turn of the cab camera after the game has placed it (yaw + right, pitch + down, radians; fov when given), as a turned head would see it
-  await pg.evaluate(() => { const v = take37.view, sc = v.scene; window.__head = null; sc.onBeforeRenderObservable.add(() => { const h = window.__head; if (!h || v.view.mode !== 'cab') return; const c = v.camera; c.rotationQuaternion = c.rotationQuaternion.multiply(BABYLON.Quaternion.RotationYawPitchRoll(h.yaw, h.pitch, 0)); if (h.fov) c.fov = h.fov; }); });
-  const head = (yaw, pitch = 0, fov = 0) => pg.evaluate(([yaw, pitch, fov]) => { window.__head = { yaw, pitch, fov }; }, [yaw, pitch, fov]);
+  await pg.evaluate(() => { const v = take37.view, sc = v.scene; window.__head = null; sc.onBeforeRenderObservable.add(() => { const h = window.__head; if (!h || v.view.mode !== 'cab') return; const c = v.camera; if (h.off) c.position.addInPlace(new BABYLON.Vector3(...h.off).applyRotationQuaternion(c.rotationQuaternion)); c.rotationQuaternion = c.rotationQuaternion.multiply(BABYLON.Quaternion.RotationYawPitchRoll(h.yaw, h.pitch, 0)); if (h.fov) c.fov = h.fov; }); });
+  const head = (yaw, pitch = 0, fov = 0, off = null) => pg.evaluate(([yaw, pitch, fov, off]) => { window.__head = { yaw, pitch, fov, off }; }, [yaw, pitch, fov, off]);   // off: a shift of the eye in the camera's own axes (right, up, forward), metres
   const P = +(process.argv.find((a) => a.startsWith('--pitch='))?.slice(8) ?? 0), D = Math.PI / 180;   // a proposed fixed pitch of the cab camera (degrees down), 0 = as the game has it
   await pg.evaluate(() => take37.setPaused(true));
+  if (process.argv.includes('--only=close')) { /* only the close frames below */ } else {
   await head(0, P * D); await shot('1_sit');
   await pg.evaluate(() => take37.advance(60, { gas: true })); await shot('2_go');
   await pg.evaluate(() => take37.advance(40, { gas: true, steer: 1 })); await shot('3_steer_left');
@@ -47,9 +48,10 @@ try {
   await pg.evaluate(() => take37.advance(30, {}));
   await head(-60 * D, P * D); await shot('5_head_left60');
   await head(60 * D, P * D); await shot('6_head_right60');
+  }
   // close: the left A-pillar, the left and right outside mirrors, the inside mirror (aims in degrees from the eye: yaw, pitch down, vertical field of view)
   const close = JSON.parse(process.argv.find((a) => a.startsWith('--close='))?.slice(8) ?? '[["7_pillar",-30,-5,26],["8_mirror_left",-39,8,20],["9_mirror_right",60,6,14],["10_mirror_inside",40,-6,24]]');
-  for (const [n, y, p, f] of close) { await head(y * D, p * D, f * D); await shot(n); }
+  for (const [n, y, p, f, o] of close) { await head(y * D, p * D, f * D, o ?? null); await shot(n); }
 } finally {
   clearTimeout(guard);
   await stop();

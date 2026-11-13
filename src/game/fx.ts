@@ -104,15 +104,21 @@ export class FxDirector {
         break;
       }
       case 'wreck': {
-        // a car that is finished: a puff of black smoke from the engine at once, and often a fire under the bonnet (the fire world decides if the petrol takes it; this is the engine's own, small, flame)
+        // a car that is finished: dark smoke from the engine in proportion to the crush work it took (Car.damage, 1 = the work that makes a wreck), and the engine's own small flame when its tank has been opened
+        // (the fire world's leak), not by chance: a wreck with a whole tank only smokes
         const car = sim.cars.find((c) => c.id === e.car); if (!car) break;
         const eng = (out: V3) => { const w = car.veh.toWorld([car.kind === 'tanker' ? 3.5 : 1.55, 0.85, 0]); out[0] = w[0]; out[1] = w[1]; out[2] = w[2]; return true; };
-        const f = this.flames.get('engine:' + car.id);
-        if (!f && car.kind !== 'tanker' && sim.rng.chance(0.45)) {
-          const h = this.spawn('fire.vehicle', car.veh.toWorld([1.55, 0.85, 0]) as V3, { heat: 8e5, D: 1.0 }, { attach: eng });
-          if (h) this.flames.set('engine:' + car.id, { handles: [h], main: h, kind: 'engine', heat: 8e5, at: sim.t, what: 'car' });
+        const leaking = take.scene.fire.store(car.id)?.leaking ?? false;
+        if (car.kind !== 'tanker' && !this.flames.has('engine:' + car.id)) {
+          if (leaking) {
+            const h = this.spawn('fire.vehicle', car.veh.toWorld([1.55, 0.85, 0]) as V3, { heat: 8e5, D: 1.0 }, { attach: eng });
+            if (h) this.flames.set('engine:' + car.id, { handles: [h], main: h, kind: 'engine', heat: 8e5, at: sim.t, what: 'car' });
+          } else {
+            const h = this.spawn('smoke.chimney', car.veh.toWorld([1.55, 0.85, 0]) as V3, { heat: clamp(1.5e4 * car.damage, 1.5e4, 8e4), D: 0.6 }, { attach: eng });
+            if (h) this.flames.set('engine:' + car.id, { handles: [h], main: h, kind: 'smoke', heat: 2e4, at: sim.t, what: 'car' });
+          }
         }
-        this.cheap('take37.piece-trail', car.veh.toWorld([1.55, 0.85, 0]) as V3, { glowing: 0.4 }, 300, { attach: eng });
+        this.cheap('take37.piece-trail', car.veh.toWorld([1.55, 0.85, 0]) as V3, { glowing: leaking ? 0.6 : 0.2 }, 300, { attach: eng });
         break;
       }
       case 'spill': {

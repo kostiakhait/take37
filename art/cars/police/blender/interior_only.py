@@ -20,7 +20,7 @@ import cab  # noqa: E402
 importlib.reload(cab)
 
 root = bpy.data.objects['CrownVic87']
-for nm in ('Interior', 'Dash', 'SteeringWheel', 'Equipment', 'PillarTrim', 'DoorCard_FL', 'DoorCard_FR', 'DoorCard_RL', 'DoorCard_RR', 'Mirror_Inner', 'Mirror_Inner_Glass', 'Mirror_L', 'Mirror_R', 'Mirror_L_Glass', 'Mirror_R_Glass'):
+for nm in ('Interior', 'Dash', 'SteeringWheel', 'Equipment', 'PillarTrim', 'PillarA_L', 'PillarA_R', 'DoorCard_FL', 'DoorCard_FR', 'DoorCard_RL', 'DoorCard_RR', 'Mirror_Inner', 'Mirror_Inner_Glass', 'Mirror_L', 'Mirror_R', 'Mirror_L_Glass', 'Mirror_R_Glass'):
     ob = bpy.data.objects.get(nm)
     if ob:
         bpy.data.objects.remove(ob, do_unlink=True)
@@ -42,7 +42,7 @@ body = bpy.data.objects['Body']
 B.metres_uv(body, ('carpet', 'headliner'))
 B.build_interior(root)
 for o in root.children:
-    if o.name in ('Interior', 'Dash', 'SteeringWheel', 'Equipment', 'PillarTrim', 'Mirror_Inner', 'Mirror_Inner_Glass'):
+    if o.name in ('Interior', 'Dash', 'SteeringWheel', 'Equipment', 'PillarTrim', 'PillarA_L', 'PillarA_R', 'Mirror_Inner', 'Mirror_Inner_Glass'):
         o.parent = root
 for m in [m for m in bpy.data.materials if m.name.startswith('old_') or m.users == 0]:
     bpy.data.materials.remove(m)
